@@ -410,6 +410,66 @@ CL_CgameSystemCalls
 The cgame module is making a system call
 ====================
 */
+/*
+====================
+CL_VRHeadOffset
+
+Urban Terror's cgame knows nothing about the headset position. ioq3quest's own cgame turns
+leaning into slow player movement, which in UrT feels like the world sliding along with the
+head. Instead move the rendered camera by the real head offset (stage space -> world, rotated
+by the difference between the game's view yaw and the headset yaw), limited to a short
+distance from the body and stopped at walls. The view weapon stays with the body.
+====================
+*/
+extern cvar_t *vr_worldscale;
+static void CL_VRHeadOffset( refdef_t *rd ) {
+	static qboolean haveAnchor;
+	static vec3_t anchor;          // stage-space head position the body is centred under
+	static vec3_t lastOrg;
+	const float maxLean = 0.6f;    // metres
+	float scale, dx, dz, len, f, l, theta, gameYaw;
+	vec3_t offset, end, mins = { -4, -4, -4 }, maxs = { 4, 4, 4 };
+	trace_t tr;
+
+	if ( !Cvar_VariableIntegerValue( "vr_urtHeadTracking" ) ) {
+		return;
+	}
+
+	scale = vr_worldscale ? vr_worldscale->value : 32.0f;
+
+	// respawn/teleport or first frame: recentre the body under the head
+	if ( !haveAnchor || Distance( rd->vieworg, lastOrg ) > 64.0f ) {
+		VectorCopy( vr.hmdposition, anchor );
+		haveAnchor = qtrue;
+	}
+	VectorCopy( rd->vieworg, lastOrg );
+
+	dx = vr.hmdposition[0] - anchor[0];   // OpenXR stage: +x right, +y up, -z forward
+	dz = vr.hmdposition[2] - anchor[2];
+	len = sqrt( dx * dx + dz * dz );
+	if ( len > maxLean ) {
+		// walked away from the body: drag it along so the offset never exceeds maxLean
+		float pull = ( len - maxLean ) / len;
+		anchor[0] += dx * pull;
+		anchor[2] += dz * pull;
+		dx = vr.hmdposition[0] - anchor[0];
+		dz = vr.hmdposition[2] - anchor[2];
+	}
+
+	f = -dz;	// forward in stage space
+	l = -dx;	// left in stage space
+	gameYaw = RAD2DEG( atan2( rd->viewaxis[0][1], rd->viewaxis[0][0] ) );
+	theta = DEG2RAD( gameYaw - vr.hmdorientation[YAW] );
+
+	offset[0] = ( f * cos( theta ) - l * sin( theta ) ) * scale;
+	offset[1] = ( f * sin( theta ) + l * cos( theta ) ) * scale;
+	offset[2] = 0;	// UrT's own viewheight/crouch handles height
+
+	VectorAdd( rd->vieworg, offset, end );
+	CM_BoxTrace( &tr, rd->vieworg, end, mins, maxs, 0, CONTENTS_SOLID, qfalse );
+	VectorCopy( tr.endpos, rd->vieworg );
+}
+
 intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	switch( args[0] ) {
 	case CG_PRINT:
@@ -572,6 +632,7 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		refdef_t rd;
 		CL_RefdefFromLegacy( VMA(1), &rd );
 		if ( !( rd.rdflags & RDF_NOWORLDMODEL ) ) {
+			CL_VRHeadOffset( &rd );
 			// The VR eye projection always covers the whole eye buffer. Urban Terror sizes its
 			// 3D view from its own settings (it came out at ~92% in the top-left corner), which
 			// shrinks the world and leaves black borders, so the world view always fills the eye.

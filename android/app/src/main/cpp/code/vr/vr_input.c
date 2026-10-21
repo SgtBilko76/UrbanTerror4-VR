@@ -1133,6 +1133,8 @@ static void IN_VRJoystick( qboolean isRightController, float joystickX, float jo
 				float multiplier = (float)((1000.0 / refresh) / (in_vrEventTime - lastframetime));
 
 				float factor = (refresh / 72.0F) * 10.0f; // adjust positional factor based on refresh rate
+				// Urban Terror: head position moves the camera instead (CL_VRHeadOffset)
+				if (!Cvar_VariableIntegerValue("vr_urtHeadTracking"))
 				rotateAboutOrigin(-vr.hmdposition_delta[0] * factor * multiplier,
 								  vr.hmdposition_delta[2] * factor * multiplier, -vr.hmdorientation[YAW], positional);
 
