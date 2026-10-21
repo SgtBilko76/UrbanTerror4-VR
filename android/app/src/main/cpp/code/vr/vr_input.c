@@ -11,6 +11,9 @@
 #include <unistd.h>
 #include <jni.h>
 
+// Engine-side estimate of a QVM menu's cursor (-1 = unknown, pin it first)
+static int vr_qvmCursorX = -1, vr_qvmCursorY = -1;
+
 #ifdef USE_LOCAL_HEADERS
 #	include "SDL.h"
 #else
@@ -861,7 +864,36 @@ static void IN_VRController( qboolean isRightController, XrPosef pose )
 	if (vr.virtual_screen || cl.snap.ps.pm_type == PM_INTERMISSION)
     {
         vr.weapon_zoomed = qfalse;
-        if (vr.menuCursorX && vr.menuCursorY)
+        if (!vr.menuCursorX && (Key_GetCatcher() & KEYCATCH_UI))
+        {
+            // QVM menus (e.g. Urban Terror's ui.qvm) don't hand the engine a pointer to
+            // their cursor, so drive it with relative mouse events instead. The cursor is
+            // first pinned to the top-left corner so the engine knows where it is; the UI
+            // clamps it to 0..SCREEN_WIDTH/HEIGHT exactly like the clamp below.
+            float yaw, pitch;
+            if (vr.menuLeftHanded) {
+                yaw = (vr_righthanded->integer != 0) ? vr.offhandangles[YAW] : vr.weaponangles[YAW];
+                pitch = (vr_righthanded->integer != 0) ? vr.offhandangles[PITCH] : vr.weaponangles[PITCH];
+            } else {
+                yaw = (vr_righthanded->integer != 0) ? vr.weaponangles[YAW] : vr.offhandangles[YAW];
+                pitch = (vr_righthanded->integer != 0) ? vr.weaponangles[PITCH] : vr.offhandangles[PITCH];
+            }
+            int x = 320 - tan((yaw - vr.menuYaw) * (M_PI*2 / 360)) * 400;
+            int y = 240 + tan((pitch + vr_weaponPitch->value) * (M_PI*2 / 360)) * 400;
+            if (x < 0) x = 0; else if (x > SCREEN_WIDTH) x = SCREEN_WIDTH;
+            if (y < 0) y = 0; else if (y > SCREEN_HEIGHT) y = SCREEN_HEIGHT;
+
+            if (vr_qvmCursorX < 0) {
+                Com_QueueEvent(in_vrEventTime, SE_MOUSE, -4 * SCREEN_WIDTH, -4 * SCREEN_HEIGHT, 0, NULL);
+                vr_qvmCursorX = 0;
+                vr_qvmCursorY = 0;
+            } else if (x != vr_qvmCursorX || y != vr_qvmCursorY) {
+                Com_QueueEvent(in_vrEventTime, SE_MOUSE, x - vr_qvmCursorX, y - vr_qvmCursorY, 0, NULL);
+                vr_qvmCursorX = x;
+                vr_qvmCursorY = y;
+            }
+        }
+        else if (vr.menuCursorX && vr.menuCursorY)
         {
             float yaw;
             float pitch;
@@ -881,6 +913,7 @@ static void IN_VRController( qboolean isRightController, XrPosef pose )
     }
     else
     {
+        vr_qvmCursorX = vr_qvmCursorY = -1;	// re-pin the QVM menu cursor next time a menu opens
 
         vr.weapon_zoomed = vr_weaponScope->integer &&
                            vr.weapon_stabilised &&
