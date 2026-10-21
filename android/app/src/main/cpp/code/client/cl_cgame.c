@@ -571,6 +571,15 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_R_RENDERSCENE: {
 		refdef_t rd;
 		CL_RefdefFromLegacy( VMA(1), &rd );
+		if ( !( rd.rdflags & RDF_NOWORLDMODEL ) ) {
+			// The VR eye projection always covers the whole eye buffer. Urban Terror sizes its
+			// 3D view from its own settings (it came out at ~92% in the top-left corner), which
+			// shrinks the world and leaves black borders, so the world view always fills the eye.
+			rd.x = 0;
+			rd.y = 0;
+			rd.width = cls.glconfig.vidWidth;
+			rd.height = cls.glconfig.vidHeight;
+		}
 		re.RenderScene( &rd );
 		return 0;
 	}

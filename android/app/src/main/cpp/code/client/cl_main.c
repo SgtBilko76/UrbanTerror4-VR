@@ -3106,7 +3106,15 @@ CL_ShutdownRef
 */
 void CL_ShutdownRef( void ) {
 	if ( re.Shutdown ) {
+#ifdef __ANDROID__
+		// The OpenXR session owns the only window and GL context; SDL can't create another one
+		// ("SDL_CreateWindow failed: Could not fetch native window"), so a vid_restart (which
+		// Urban Terror issues when it loads a map) must keep them. The renderer is linked
+		// statically, so its glConfig survives and R_Init skips GLimp_Init.
+		re.Shutdown( qfalse );
+#else
 		re.Shutdown( qtrue );
+#endif
 	}
 
 	Com_Memset( &re, 0, sizeof( re ) );
