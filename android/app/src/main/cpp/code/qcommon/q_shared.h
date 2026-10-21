@@ -41,10 +41,10 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
   #define CINEMATICS_INTRO		"intro.roq"
 //  #define LEGACY_PROTOCOL	// You probably don't need this for your standalone game
 #else
-  #define PRODUCT_NAME				"ioq3"
-  #define BASEGAME					"baseq3"
-  #define CLIENT_WINDOW_TITLE		"ioquake3"
-  #define CLIENT_WINDOW_MIN_TITLE	"ioq3"
+  #define PRODUCT_NAME				"ioq3-UrT"
+  #define BASEGAME					"q3ut4"
+  #define CLIENT_WINDOW_TITLE		"Urban Terror"
+  #define CLIENT_WINDOW_MIN_TITLE	"Urban Terror"
   #define HOMEPATH_NAME_UNIX		".q3a"
   #define HOMEPATH_NAME_WIN			"Quake3"
   #define HOMEPATH_NAME_MACOSX		HOMEPATH_NAME_WIN
@@ -1071,6 +1071,7 @@ typedef struct {
 #define	KEYCATCH_UI					0x0002
 #define	KEYCATCH_MESSAGE		0x0004
 #define	KEYCATCH_CGAME			0x0008
+#define KEYCATCH_RADIO			0x0010	// UrT radio menu
 
 
 // sound channels
@@ -1107,7 +1108,7 @@ typedef enum {
 // per-level limits
 //
 #define	MAX_CLIENTS			64		// absolute limit
-#define MAX_LOCATIONS		64
+#define MAX_LOCATIONS		64	// UrT raises this, but only its own (QVM) game code uses it
 
 #define	GENTITYNUM_BITS		10		// don't need to send any more
 #define	MAX_GENTITIES		(1<<GENTITYNUM_BITS)

@@ -575,9 +575,8 @@ it will attempt to load as a system dll
 */
 vm_t *VM_Create( const char *module, intptr_t (*systemCalls)(intptr_t *), 
 				vmInterpret_t interpret ) {
-#if __ANDROID__
-	interpret = VMI_NATIVE;
-#endif
+// Urban Terror ships cgame/qagame/ui as QVM bytecode only, so the Android
+// "always load native libs" override is disabled here.
 
 	vm_t		*vm;
 	vmHeader_t	*header;

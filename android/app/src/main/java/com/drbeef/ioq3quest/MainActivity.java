@@ -95,42 +95,26 @@ public class MainActivity extends SDLActivity // implements KeyEvent.Callback
 	}
 
 	public void create() throws IOException {
-		// Prepare base game directory
-		new File("/sdcard/ioquake3Quest/baseq3").mkdirs();
+		// Prepare the Urban Terror game directory. The game data itself (the q3ut4
+		// zUrT43_*.pk3 files) has to be copied there by the user.
+		new File("/sdcard/UrTQuest/q3ut4").mkdirs();
 
 		// Copy the command line params file and autoexec
-		copy_asset("/sdcard/ioquake3Quest", "commandline.txt", false);
-		copy_asset("/sdcard/ioquake3Quest/baseq3", "autoexec.cfg", false);
-		// Copy our special pak file and demo
-		copy_asset("/sdcard/ioquake3Quest/baseq3", "pakQ3Q.pk3", true);
-		copy_asset("/sdcard/ioquake3Quest/baseq3", "pak0.pk3", false);
-		//Copy Omarlego's excellent replacement background
-		copy_asset("/sdcard/ioquake3Quest/baseq3", "z_custom_background66.pk3", false);
+		copy_asset("/sdcard/UrTQuest", "commandline.txt", false);
+		copy_asset("/sdcard/UrTQuest/q3ut4", "autoexec.cfg", false);
+		// VR GLSL shaders (r_externalGLSL 1 loads them from this pak)
+		copy_asset("/sdcard/UrTQuest/q3ut4", "pakQ3Q.pk3", true);
 		// Cleanup incompatible shaders
-		delete_asset("/sdcard/ioquake3Quest/baseq3/glsl");
-
-		// If Team Arena is installed then copy necessary stuff
-		if (new File("/sdcard/ioquake3Quest/missionpack").exists()) {
-			copy_asset("/sdcard/ioquake3Quest/missionpack", "autoexec.cfg", false);
-			copy_asset("/sdcard/ioquake3Quest/missionpack", "pakQ3Q.pk3", true);
-			delete_asset("/sdcard/ioquake3Quest/missionpack/glsl");
-		}
-
-		// If Open Arena is installed then copy necessary stuff
-		if (new File("/sdcard/ioquake3Quest/baseoa").exists()) {
-			copy_asset("/sdcard/ioquake3Quest/baseoa", "autoexec_oa.cfg", "autoexec.cfg", false);
-			copy_asset("/sdcard/ioquake3Quest/baseoa", "pakQ3Q.pk3", true);
-			delete_asset("/sdcard/ioquake3Quest/baseoa/glsl");
-		}
+		delete_asset("/sdcard/UrTQuest/q3ut4/glsl");
 
 		//Read these from a file and pass through
 		commandLineParams = new String();
 
 		//See if user is trying to use command line params
-		if (new File("/sdcard/ioquake3Quest/commandline.txt").exists()) {
+		if (new File("/sdcard/UrTQuest/commandline.txt").exists()) {
 			BufferedReader br;
 			try {
-				br = new BufferedReader(new FileReader("/sdcard/ioquake3Quest/commandline.txt"));
+				br = new BufferedReader(new FileReader("/sdcard/UrTQuest/commandline.txt"));
 				String s;
 				StringBuilder sb = new StringBuilder(0);
 				while ((s = br.readLine()) != null)

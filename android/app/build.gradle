@@ -12,14 +12,14 @@ def jniStageDir = file("${buildDir}/jniStage")
 
 // A Unix shell is needed for the Makefile, which uses $(shell ...) in many places.
 def gitBash = ['C:/Program Files/Git/bin/bash.exe', '/bin/bash', '/usr/bin/bash']
-        .collect { file(it) }.find { it.exists() }
+        .collect { new File(it) }.find { it.exists() }
 
 android {
 	namespace 'com.drbeef.ioq3quest'
 	compileSdk 34
-	ndkVersion "21.1.6352462"
+	ndkVersion "25.1.8937393"
 	defaultConfig {
-		applicationId = 'com.drbeef.ioq3quest'
+		applicationId = 'com.bilko.urtquest'
 		minSdkVersion 25
 		targetSdkVersion 34
 		versionCode 59
@@ -64,7 +64,7 @@ android {
 	externalNativeBuild {
 		cmake {
 			path 'src/main/cpp/CMakeLists.txt'
-			version '3.10.2'
+			version '3.22.1'
 		}
 	}
 	sourceSets {
@@ -113,6 +113,8 @@ tasks.register('generateVrVersionHeader') {
 // on old shaders. Built with Gradle's Zip task because `zip` is not always on PATH on Windows.
 tasks.register('packPakQ3Q', Zip) {
 	from file('src/main/pakQ3Q')
+	// UrT: only the VR GLSL shaders; Q3's VR menus/gfx would collide with UrT's own UI
+	include 'glsl/**'
 	archiveFileName = 'pakQ3Q.pk3'
 	destinationDirectory = file('src/main/assets')
 }

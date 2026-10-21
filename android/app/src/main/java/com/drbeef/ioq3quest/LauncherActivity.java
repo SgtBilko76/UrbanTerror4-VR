@@ -15,7 +15,7 @@ import android.view.WindowManager;
 /**
  * Storage permission gate.
  *
- * The engine reads its data straight off /sdcard/ioquake3Quest, so it needs all-files access
+ * The engine reads its data straight off /sdcard/UrTQuest, so it needs all-files access
  * before it starts. That gate cannot live in MainActivity: it extends SDLActivity, whose
  * super.onCreate() spins up the native thread, so the engine would start whether or not the user
  * granted anything. This activity owns the launcher icon instead, and only hands off to

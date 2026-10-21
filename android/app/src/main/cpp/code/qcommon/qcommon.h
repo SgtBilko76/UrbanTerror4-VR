@@ -137,7 +137,7 @@ NET
 
 #define	PORT_ANY			-1
 
-#define	MAX_RELIABLE_COMMANDS	64			// max string commands buffered for restransmit
+#define	MAX_RELIABLE_COMMANDS	128			// max string commands buffered for restransmit
 
 typedef enum {
 	NA_BAD = 0,					// an address lookup failed
@@ -264,7 +264,7 @@ extern int demo_protocols[];
 #endif
 // override on command line, config files etc.
 #ifndef MASTER_SERVER_NAME
-#define MASTER_SERVER_NAME	"master.quake3arena.com"
+#define MASTER_SERVER_NAME	"master.urbanterror.info"
 #endif
 
 #ifndef STANDALONE
