@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #include "../botlib/botlib.h"
 #include "../vr/vr_base.h"
 #include "../vr/vr_clientinfo.h"
+#include "cl_legacy_abi.h"
 
 #ifdef USE_MUMBLE
 #include "libmumblelink.h"
@@ -547,9 +548,12 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_R_CLEARSCENE:
 		re.ClearScene();
 		return 0;
-	case CG_R_ADDREFENTITYTOSCENE:
-		re.AddRefEntityToScene( VMA(1) );
+	case CG_R_ADDREFENTITYTOSCENE: {
+		refEntity_t ent;
+		CL_RefEntityFromLegacy( VMA(1), &ent );
+		re.AddRefEntityToScene( &ent );
 		return 0;
+	}
 	case CG_R_ADDPOLYTOSCENE:
 		re.AddPolyToScene( args[1], args[2], VMA(3), 1 );
 		return 0;
@@ -564,9 +568,12 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_R_ADDADDITIVELIGHTTOSCENE:
 		re.AddAdditiveLightToScene( VMA(1), VMF(2), VMF(3), VMF(4), VMF(5) );
 		return 0;
-	case CG_R_RENDERSCENE:
-		re.RenderScene( VMA(1) );
+	case CG_R_RENDERSCENE: {
+		refdef_t rd;
+		CL_RefdefFromLegacy( VMA(1), &rd );
+		re.RenderScene( &rd );
 		return 0;
+	}
 	case CG_R_SETCOLOR:
 		re.SetColor( VMA(1) );
 		return 0;

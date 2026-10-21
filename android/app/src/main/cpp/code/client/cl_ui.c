@@ -24,6 +24,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 
 #include "../botlib/botlib.h"
 #include "../vr/vr_clientinfo.h"
+#include "cl_legacy_abi.h"
 
 extern	botlib_export_t	*botlib_export;
 extern vr_clientinfo_t vr;
@@ -822,9 +823,12 @@ intptr_t CL_UISystemCalls( intptr_t *args ) {
 		re.ClearScene();
 		return 0;
 
-	case UI_R_ADDREFENTITYTOSCENE:
-		re.AddRefEntityToScene( VMA(1) );
+	case UI_R_ADDREFENTITYTOSCENE: {
+		refEntity_t ent;
+		CL_RefEntityFromLegacy( VMA(1), &ent );
+		re.AddRefEntityToScene( &ent );
 		return 0;
+	}
 
 	case UI_R_ADDPOLYTOSCENE:
 		re.AddPolyToScene( args[1], args[2], VMA(3), 1 );
@@ -834,9 +838,12 @@ intptr_t CL_UISystemCalls( intptr_t *args ) {
 		re.AddLightToScene( VMA(1), VMF(2), VMF(3), VMF(4), VMF(5) );
 		return 0;
 
-	case UI_R_RENDERSCENE:
-		re.RenderScene( VMA(1) );
+	case UI_R_RENDERSCENE: {
+		refdef_t rd;
+		CL_RefdefFromLegacy( VMA(1), &rd );
+		re.RenderScene( &rd );
 		return 0;
+	}
 
 	case UI_R_SETCOLOR:
 		re.SetColor( VMA(1) );

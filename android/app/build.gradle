@@ -113,8 +113,9 @@ tasks.register('generateVrVersionHeader') {
 // on old shaders. Built with Gradle's Zip task because `zip` is not always on PATH on Windows.
 tasks.register('packPakQ3Q', Zip) {
 	from file('src/main/pakQ3Q')
-	// UrT: only the VR GLSL shaders; Q3's VR menus/gfx would collide with UrT's own UI
-	include 'glsl/**'
+	// UrT: VR GLSL shaders, the VR HUD shader script and its gfx. Q3's VR menus (ui/)
+	// would replace UrT's own UI, so they are left out.
+	include 'glsl/**', 'scripts/**', 'gfx/**'
 	archiveFileName = 'pakQ3Q.pk3'
 	destinationDirectory = file('src/main/assets')
 }

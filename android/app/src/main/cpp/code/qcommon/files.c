@@ -4007,7 +4007,8 @@ void FS_InitFilesystem( void ) {
 	Com_StartupVariable("fs_homepath");
 	Com_StartupVariable("fs_game");
 
-    fs_forceNativeVM = Cvar_Get( "fs_forceNativeVM", "1", CVAR_ARCHIVE );
+    // UrT ships its game logic only as QVMs inside zUrT43_qvm.pk3, so packs must be searched
+    fs_forceNativeVM = Cvar_Get( "fs_forceNativeVM", "0", CVAR_ARCHIVE );
 	fs_nativeVMBase = Cvar_Get( "fs_nativeVMBase", "baseq3", CVAR_ARCHIVE );
 
 
