@@ -587,6 +587,9 @@ CL_FinishMove
 ==============
 */
 void rotateAboutOrigin(float x, float y, float rotation, vec2_t out);
+extern qboolean cl_vrAimActive;
+extern int cl_vrAimTime;
+extern float cl_vrAimYawDelta, cl_vrAimPitch;
 void CL_FinishMove( usercmd_t *cmd ) {
 	int		i;
 
@@ -637,6 +640,19 @@ void CL_FinishMove( usercmd_t *cmd ) {
 	else {
 		for (i = 0; i < 3; i++) {
 			cmd->angles[i] = ANGLE2SHORT(cl.viewangles[i]);
+		}
+		// Urban Terror controller aiming (see CL_VRApplyView in cl_cgame.c): send the hand's
+		// direction as the view angles, and keep movement relative to the head.
+		if ( cl_vrAimActive && cls.realtime - cl_vrAimTime < 250 ) {
+			float d = DEG2RAD( -cl_vrAimYawDelta );	// view yaw minus aim yaw
+			float f = cmd->forwardmove, r = cmd->rightmove, nf, nr;
+			cmd->angles[YAW] = ANGLE2SHORT( cl.viewangles[YAW] + cl_vrAimYawDelta );
+			cmd->angles[PITCH] = ANGLE2SHORT( cl_vrAimPitch );
+			cmd->angles[ROLL] = 0;
+			nf = f * cos( d ) + r * sin( d );
+			nr = r * cos( d ) - f * sin( d );
+			cmd->forwardmove = ClampChar( (int)nf );
+			cmd->rightmove = ClampChar( (int)nr );
 		}
 	}
 }

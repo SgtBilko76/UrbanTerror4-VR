@@ -158,6 +158,12 @@ void VR_InitCvars( void )
 	vr_worldscale = Cvar_Get ("vr_worldscale", "32.0", CVAR_ARCHIVE);
 	vr_worldscaleScaler = Cvar_Get ("vr_worldscaleScaler", "1.0", CVAR_ARCHIVE);
 	Cvar_Get ("vr_urtHeadTracking", "1", CVAR_ARCHIVE); // camera follows head position (UrT)
+	Cvar_Get ("vr_urtControllerAim", "1", CVAR_ARCHIVE); // aim with the dominant controller (UrT)
+	Cvar_Get ("vr_urtLaser", "1", CVAR_ARCHIVE); // laser sight from the hand
+	// where UrT's view model has its grip, relative to the eye (game units): moved onto the controller
+	Cvar_Get ("vr_urtGunForward", "18", CVAR_ARCHIVE);
+	Cvar_Get ("vr_urtGunLeft", "-8", CVAR_ARCHIVE);
+	Cvar_Get ("vr_urtGunUp", "-14", CVAR_ARCHIVE);
 	vr_hudDepth = Cvar_Get ("vr_hudDepth", "3", CVAR_ARCHIVE);
 	vr_righthanded = Cvar_Get ("vr_righthanded", "1", CVAR_ARCHIVE);
 	vr_switchThumbsticks = Cvar_Get ("vr_switchThumbsticks", "0", CVAR_ARCHIVE);

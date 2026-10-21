@@ -470,6 +470,176 @@ static void CL_VRHeadOffset( refdef_t *rd ) {
 	VectorCopy( tr.endpos, rd->vieworg );
 }
 
+/*
+====================
+VR controller aiming for Urban Terror (engine side, like QuakeQuest)
+
+UrT's cgame/qagame are closed QVMs that know nothing about VR. The engine therefore:
+  * sends the dominant controller's direction to the game as the view angles (CL_FinishMove),
+    so the server and the cgame's prediction shoot where the hand points,
+  * renders the camera from the headset instead of from those angles (CL_VRApplyView),
+  * moves the first-person weapon/hands model from in front of the eye into the hand
+    (first-person entities are held back until the scene is rendered, then re-placed),
+  * draws a laser sight from the hand to what it is pointing at.
+====================
+*/
+extern cvar_t *vr_worldscale;
+qboolean cl_vrAimActive;		// read by CL_FinishMove
+int cl_vrAimTime;
+float cl_vrAimYawDelta;		// aim yaw minus head yaw (degrees)
+float cl_vrAimPitch;		// absolute aim pitch
+
+#define MAX_VR_FP_ENTS 64
+static refEntity_t vrFpEnts[MAX_VR_FP_ENTS];
+static int vrNumFpEnts;
+
+static qboolean CL_VRAimEnabled( void ) {
+	return Cvar_VariableIntegerValue( "vr_urtControllerAim" ) &&
+		clc.state == CA_ACTIVE && !( Key_GetCatcher() & ( KEYCATCH_UI | KEYCATCH_CONSOLE ) );
+}
+
+static qboolean CL_VRFirstPersonPlayer( void ) {
+	// own player, alive (PM_NORMAL/PM_NOCLIP/PM_SPECTATOR), not following someone else
+	return cl.snap.ps.clientNum == clc.clientNum && cl.snap.ps.pm_type < 3;
+}
+
+static void CL_VRHoldEntity( const refEntity_t *ent ) {
+	if ( vrNumFpEnts < MAX_VR_FP_ENTS ) {
+		vrFpEnts[vrNumFpEnts++] = *ent;
+	}
+}
+
+static void CL_VRTransformPoint( const vec3_t in, const vec3_t gOrg, vec3_t gAxis[3],
+		const vec3_t grip, const vec3_t hOrg, vec3_t hAxis[3], vec3_t out ) {
+	vec3_t d, l;
+	int i;
+	VectorSubtract( in, gOrg, d );
+	for ( i = 0; i < 3; i++ ) {
+		l[i] = DotProduct( d, gAxis[i] ) - grip[i];
+	}
+	VectorCopy( hOrg, out );
+	for ( i = 0; i < 3; i++ ) {
+		VectorMA( out, l[i], hAxis[i], out );
+	}
+}
+
+static void CL_VRTransformAxis( const vec3_t in, vec3_t gAxis[3], vec3_t hAxis[3], vec3_t out ) {
+	int i;
+	VectorClear( out );
+	for ( i = 0; i < 3; i++ ) {
+		VectorMA( out, DotProduct( in, gAxis[i] ), hAxis[i], out );
+	}
+}
+
+// stage-space offset (OpenXR: +x right, +y up, -z forward) -> world, for a given head yaw
+static void CL_VRStageToWorld( const vec3_t stage, float headYaw, vec3_t out ) {
+	float scale = vr_worldscale ? vr_worldscale->value : 32.0f;
+	float f = -stage[2], l = -stage[0], u = stage[1];
+	float theta = DEG2RAD( headYaw - vr.hmdorientation[YAW] );
+	out[0] = ( f * cos( theta ) - l * sin( theta ) ) * scale;
+	out[1] = ( f * sin( theta ) + l * cos( theta ) ) * scale;
+	out[2] = u * scale;
+}
+
+static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
+	vec3_t head, aim, hand, off, fwd, end, dir, grip, gAxis[3], hAxis[3], zero = { 0, 0, 0 };
+	vec3_t aimEye;
+	float headYaw;
+	trace_t tr;
+	int i;
+
+	if ( !CL_VRAimEnabled() || !CL_VRFirstPersonPlayer() ) {
+		// not aiming with the controller: put the held entities back unchanged
+		for ( i = 0; i < vrNumFpEnts; i++ ) {
+			re.AddRefEntityToScene( &vrFpEnts[i] );
+		}
+		vrNumFpEnts = 0;
+		cl_vrAimActive = qfalse;
+		CL_VRHeadOffset( rd );
+		return;
+	}
+
+	// camera: headset orientation, yaw anchored to the client's (head-driven) view yaw
+	headYaw = AngleNormalize180( cl.viewangles[YAW] + SHORT2ANGLE( cl.snap.ps.delta_angles[YAW] ) );
+	head[PITCH] = vr.hmdorientation[PITCH];
+	head[YAW] = headYaw;
+	head[ROLL] = vr.hmdorientation[ROLL];
+	AnglesToAxis( head, rd->viewaxis );
+	CL_VRHeadOffset( rd );
+
+	// hand position and orientation in the world
+	VectorSubtract( vr.weaponposition, vr.hmdposition, off );
+	CL_VRStageToWorld( off, headYaw, hand );
+	VectorAdd( rd->vieworg, hand, hand );
+	aim[PITCH] = vr.weaponangles[PITCH];
+	aim[YAW] = AngleNormalize180( vr.weaponangles[YAW] + ( headYaw - vr.hmdorientation[YAW] ) );
+	aim[ROLL] = vr.weaponangles[ROLL];
+	AnglesToAxis( aim, hAxis );
+
+	// what the hand points at; the game shoots from the eye, so aim the eye at that point
+	VectorCopy( hAxis[0], fwd );
+	VectorMA( hand, 8192, fwd, end );
+	CM_BoxTrace( &tr, hand, end, zero, zero, 0, CONTENTS_SOLID | CONTENTS_BODY, qfalse );
+	VectorSubtract( tr.endpos, in->vieworg, dir );
+	if ( VectorLength( dir ) > 64.0f ) {
+		vectoangles( dir, aimEye );
+	} else {
+		VectorCopy( aim, aimEye );
+	}
+	cl_vrAimYawDelta = AngleNormalize180( aimEye[YAW] - headYaw );
+	cl_vrAimPitch = AngleNormalize180( aimEye[PITCH] );
+	cl_vrAimTime = cls.realtime;
+	cl_vrAimActive = qtrue;
+
+	// weapon/hands: from the game's eye frame into the hand frame
+	for ( i = 0; i < 3; i++ ) {
+		VectorCopy( in->viewaxis[i], gAxis[i] );
+	}
+	grip[0] = Cvar_VariableValue( "vr_urtGunForward" );
+	grip[1] = Cvar_VariableValue( "vr_urtGunLeft" );
+	grip[2] = Cvar_VariableValue( "vr_urtGunUp" );
+	for ( i = 0; i < vrNumFpEnts; i++ ) {
+		refEntity_t *e = &vrFpEnts[i];
+		vec3_t a0, a1, a2, o;
+		CL_VRTransformAxis( e->axis[0], gAxis, hAxis, a0 );
+		CL_VRTransformAxis( e->axis[1], gAxis, hAxis, a1 );
+		CL_VRTransformAxis( e->axis[2], gAxis, hAxis, a2 );
+		VectorCopy( a0, e->axis[0] );
+		VectorCopy( a1, e->axis[1] );
+		VectorCopy( a2, e->axis[2] );
+		CL_VRTransformPoint( e->origin, in->vieworg, gAxis, grip, hand, hAxis, o );
+		VectorCopy( o, e->origin );
+		CL_VRTransformPoint( e->oldorigin, in->vieworg, gAxis, grip, hand, hAxis, o );
+		VectorCopy( o, e->oldorigin );
+		CL_VRTransformPoint( e->lightingOrigin, in->vieworg, gAxis, grip, hand, hAxis, o );
+		VectorCopy( o, e->lightingOrigin );
+		re.AddRefEntityToScene( e );
+	}
+	vrNumFpEnts = 0;
+
+	// laser sight
+	if ( Cvar_VariableIntegerValue( "vr_urtLaser" ) ) {
+		static qhandle_t laserShader;
+		refEntity_t laser;
+		if ( !laserShader ) {
+			laserShader = re.RegisterShader( "railCore" );
+			if ( !laserShader ) laserShader = cls.whiteShader;
+		}
+		Com_Memset( &laser, 0, sizeof( laser ) );
+		laser.reType = RT_LASERSIGHT;
+		laser.customShader = laserShader;
+		VectorCopy( hand, laser.origin );
+		VectorCopy( tr.endpos, laser.oldorigin );
+		laser.radius = 0.5f;
+		AxisClear( laser.axis );
+		laser.shaderRGBA[0] = 0xff;
+		laser.shaderRGBA[1] = 0x00;
+		laser.shaderRGBA[2] = 0x00;
+		laser.shaderRGBA[3] = 0x60;
+		re.AddRefEntityToScene( &laser );
+	}
+}
+
 intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	switch( args[0] ) {
 	case CG_PRINT:
@@ -611,6 +781,10 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_R_ADDREFENTITYTOSCENE: {
 		refEntity_t ent;
 		CL_RefEntityFromLegacy( VMA(1), &ent );
+		if ( ( ent.renderfx & RF_FIRST_PERSON ) && CL_VRAimEnabled() ) {
+			CL_VRHoldEntity( &ent );
+			return 0;
+		}
 		re.AddRefEntityToScene( &ent );
 		return 0;
 	}
@@ -632,7 +806,24 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		refdef_t rd;
 		CL_RefdefFromLegacy( VMA(1), &rd );
 		if ( !( rd.rdflags & RDF_NOWORLDMODEL ) ) {
-			CL_VRHeadOffset( &rd );
+			CL_VRApplyView( VMA(1), &rd );
+			{	// TEMP diagnostics: camera height above the floor
+				static int dbgLast;
+				int now = Sys_Milliseconds();
+				if ( now - dbgLast > 3000 ) {
+					trace_t tr;
+					vec3_t down, mins = { -2, -2, -2 }, maxs = { 2, 2, 2 };
+					const legacyRefdef_t *in = VMA(1);
+					dbgLast = now;
+					VectorCopy( in->vieworg, down );
+					down[2] -= 1000;
+					CM_BoxTrace( &tr, in->vieworg, down, mins, maxs, 0, CONTENTS_SOLID, qfalse );
+					Com_Printf( "CAMDBG game org %.1f %.1f %.1f -> render %.1f %.1f %.1f floor %.1f below, viewheight %d origin z %.1f, fwd %.2f %.2f %.2f, hmd y %.2f\n",
+						in->vieworg[0], in->vieworg[1], in->vieworg[2], rd.vieworg[0], rd.vieworg[1], rd.vieworg[2],
+						in->vieworg[2] - tr.endpos[2], cl.snap.ps.viewheight, cl.snap.ps.origin[2],
+						in->viewaxis[0][0], in->viewaxis[0][1], in->viewaxis[0][2], vr.hmdposition[1] );
+				}
+			}
 			// The VR eye projection always covers the whole eye buffer. Urban Terror sizes its
 			// 3D view from its own settings (it came out at ~92% in the top-left corner), which
 			// shrinks the world and leaves black borders, so the world view always fills the eye.
