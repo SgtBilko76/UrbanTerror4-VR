@@ -53,4 +53,5 @@ static ID_INLINE void CL_RefEntityFromLegacy( const void *in, refEntity_t *out )
 	out->invert = qfalse;
 }
 
+
 #endif

@@ -1283,7 +1283,7 @@ static void IN_VRButtons( qboolean isRightController, uint32_t buttons )
     }
 
     if (buttons & ovrButton_A) {
-        if (cl.snap.ps.pm_flags & PMF_FOLLOW)
+        if (VR_PS_FOLLOWING(cl.snap.ps))
         {
             // Go back to free spectator mode if following player
             if (!IN_InputActivated(&controller->buttons, ovrButton_A)) {
@@ -1325,7 +1325,7 @@ static void IN_VRButtons( qboolean isRightController, uint32_t buttons )
     }
 
     if (buttons & ovrButton_X) {
-        if (cl.snap.ps.pm_flags & PMF_FOLLOW)
+        if (VR_PS_FOLLOWING(cl.snap.ps))
         {
             // Switch follow mode
             if (!IN_InputActivated(&controller->buttons, ovrButton_X)) {

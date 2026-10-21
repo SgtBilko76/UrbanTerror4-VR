@@ -21,4 +21,11 @@ void VR_HapticEvent(const char* event, int position, int flags, int intensity, f
 
 #endif
 
+
+// Quake 3 marks "spectating, following another player" with pm_flags bit 4096 (PMF_FOLLOW).
+// Urban Terror's closed game code reuses that bit for something else, which made the engine
+// show gameplay on the flat follow-cam screen, turn A into "team spectator" and X into a
+// follow-mode switch. The engine can't tell UrT's follow state, so these Q3 paths are off.
+#define VR_PS_FOLLOWING(ps)	(0)
+
 #endif

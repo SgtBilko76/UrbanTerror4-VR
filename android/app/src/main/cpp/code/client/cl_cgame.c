@@ -579,6 +579,12 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 			rd.y = 0;
 			rd.width = cls.glconfig.vidWidth;
 			rd.height = cls.glconfig.vidHeight;
+			// The renderer builds its culling frustum from fov_x/fov_y; the eyes see more than
+			// UrT's cg_fov, so use the headset's field of view (as ioq3quest's own cgame does).
+			if ( vr.fov_x > 1.0f && vr.fov_y > 1.0f ) {
+				rd.fov_x = vr.fov_x;
+				rd.fov_y = vr.fov_y;
+			}
 		}
 		re.RenderScene( &rd );
 		return 0;

@@ -546,7 +546,7 @@ void VR_DrawFrame( engine_t* engine ) {
     XrCompositionLayerProjectionView projection_layer_elements[2] = {};
     // Reuse the value the projections were built from, so the layer choice cannot disagree with
     // them if the key catcher changes during Com_Frame.
-    if (!screenLayer && !(cl.snap.ps.pm_flags & PMF_FOLLOW && vr.follow_mode == VRFM_FIRSTPERSON)) {
+    if (!screenLayer && !(VR_PS_FOLLOWING(cl.snap.ps) && vr.follow_mode == VRFM_FIRSTPERSON)) {
         vr.menuYaw = vr.hmdorientation[YAW];
 
         if (fullscreenMode) {
