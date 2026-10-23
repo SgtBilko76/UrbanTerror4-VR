@@ -776,6 +776,7 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		re.RegisterFont( VMA(1), args[2], VMA(3));
 		return 0;
 	case CG_R_CLEARSCENE:
+		vrNumFpEnts = 0;	// drop first-person entities held back for controller aiming
 		re.ClearScene();
 		return 0;
 	case CG_R_ADDREFENTITYTOSCENE: {
@@ -805,7 +806,14 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_R_RENDERSCENE: {
 		refdef_t rd;
 		CL_RefdefFromLegacy( VMA(1), &rd );
-		if ( !( rd.rdflags & RDF_NOWORLDMODEL ) ) {
+		if ( rd.rdflags & RDF_NOWORLDMODEL ) {
+			// model-only scene (HUD/menu models): draw held entities where the game put them
+			int i;
+			for ( i = 0; i < vrNumFpEnts; i++ ) {
+				re.AddRefEntityToScene( &vrFpEnts[i] );
+			}
+			vrNumFpEnts = 0;
+		} else {
 			CL_VRApplyView( VMA(1), &rd );
 			{	// TEMP diagnostics: camera height above the floor
 				static int dbgLast;

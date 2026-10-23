@@ -647,7 +647,8 @@ void CL_FinishMove( usercmd_t *cmd ) {
 			float d = DEG2RAD( -cl_vrAimYawDelta );	// view yaw minus aim yaw
 			float f = cmd->forwardmove, r = cmd->rightmove, nf, nr;
 			cmd->angles[YAW] = ANGLE2SHORT( cl.viewangles[YAW] + cl_vrAimYawDelta );
-			cmd->angles[PITCH] = ANGLE2SHORT( cl_vrAimPitch );
+			// the game adds delta_angles to what we send, so take it back out
+			cmd->angles[PITCH] = ANGLE2SHORT( cl_vrAimPitch - SHORT2ANGLE( cl.snap.ps.delta_angles[PITCH] ) );
 			cmd->angles[ROLL] = 0;
 			nf = f * cos( d ) + r * sin( d );
 			nr = r * cos( d ) - f * sin( d );
