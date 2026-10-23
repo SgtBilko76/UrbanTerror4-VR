@@ -279,7 +279,7 @@ void VR_InitCvars( void )
             Cvar_Get ("vr_button_map_RTHUMBBACK", "", CVAR_ARCHIVE); // unmapped
         }
         Cvar_Get ("vr_button_map_PRIMARYGRIP", "+weapon_select", CVAR_ARCHIVE); // weapon selector
-        Cvar_Get ("vr_button_map_PRIMARYTHUMBSTICK", "", CVAR_ARCHIVE); // unmapped
+        Cvar_Get ("vr_button_map_PRIMARYTHUMBSTICK", "+button6", CVAR_ARCHIVE); // Bandage (UrT)
        	Cvar_Get ("vr_button_map_RTHUMBFORWARD_ALT", "", CVAR_ARCHIVE); // unmapped
        	Cvar_Get ("vr_button_map_RTHUMBRIGHT_ALT", "", CVAR_ARCHIVE); // unmapped
        	Cvar_Get ("vr_button_map_RTHUMBBACK_ALT", "", CVAR_ARCHIVE); // unmapped
@@ -311,7 +311,7 @@ void VR_InitCvars( void )
 			Cvar_Get ("vr_button_map_RTHUMBBACK", "weapprev", CVAR_ARCHIVE); // previous weapon
 		}
 		Cvar_Get ("vr_button_map_PRIMARYGRIP", "+alt", CVAR_ARCHIVE); // switch to alt layout
-		Cvar_Get ("vr_button_map_PRIMARYTHUMBSTICK", "", CVAR_ARCHIVE); // unmapped
+		Cvar_Get ("vr_button_map_PRIMARYTHUMBSTICK", "+button6", CVAR_ARCHIVE); // Bandage (UrT)
 		Cvar_Get ("vr_button_map_RTHUMBFORWARD_ALT", "", CVAR_ARCHIVE); // unmapped
 		Cvar_Get ("vr_button_map_RTHUMBRIGHT_ALT", "", CVAR_ARCHIVE); // unmapped
 		Cvar_Get ("vr_button_map_RTHUMBBACK_ALT", "", CVAR_ARCHIVE); // unmapped
@@ -322,36 +322,46 @@ void VR_InitCvars( void )
 	// (cannot move and jump/crouch with same thumb at same time)
 	qboolean switchThumbsticks = Cvar_VariableValue( "vr_switchThumbsticks" ) != 0;
 	if (switchThumbsticks) {
-		Cvar_Get ("vr_button_map_A", "+button2", CVAR_ARCHIVE); // Use Item
+		Cvar_Get ("vr_button_map_A", "+button3", CVAR_ARCHIVE); // Fire mode (UrT)
 		Cvar_Get ("vr_button_map_B", "+button5", CVAR_ARCHIVE); // Reload (UrT)
 		Cvar_Get ("vr_button_map_X", "+moveup", CVAR_ARCHIVE); // Jump
 		Cvar_Get ("vr_button_map_Y", "+movedown", CVAR_ARCHIVE); // Crouch
 	} else {
 		Cvar_Get ("vr_button_map_A", "+moveup", CVAR_ARCHIVE); // Jump
 		Cvar_Get ("vr_button_map_B", "+movedown", CVAR_ARCHIVE); // Crouch
-		Cvar_Get ("vr_button_map_X", "+button2", CVAR_ARCHIVE); // Use Item
+		Cvar_Get ("vr_button_map_X", "+button3", CVAR_ARCHIVE); // Fire mode (UrT)
 		Cvar_Get ("vr_button_map_Y", "+button5", CVAR_ARCHIVE); // Reload (UrT)
 	}
 
-	// Urban Terror: +button3 is Quake 3's gesture and does nothing; the face button that had it
-	// reloads (+button5, UrT's "R"). Migrates configs saved by earlier builds.
-	if ( !strcmp( Cvar_VariableString( "vr_button_map_Y" ), "+button3" ) ) Cvar_Set( "vr_button_map_Y", "+button5" );
-	if ( !strcmp( Cvar_VariableString( "vr_button_map_B" ), "+button3" ) ) Cvar_Set( "vr_button_map_B", "+button5" );
 
 	//Remaining button mapping (buttons not affected by schemas)
 	Cvar_Get ("vr_button_map_A_ALT", "", CVAR_ARCHIVE); // unmapped
 	Cvar_Get ("vr_button_map_B_ALT", "", CVAR_ARCHIVE); // unmapped
 	Cvar_Get ("vr_button_map_X_ALT", "", CVAR_ARCHIVE); // unmapped
 	Cvar_Get ("vr_button_map_Y_ALT", "", CVAR_ARCHIVE); // unmapped
-	Cvar_Get ("vr_button_map_SECONDARYTHUMBSTICK", "+scores", CVAR_ARCHIVE); // Scoreboard
+	Cvar_Get ("vr_button_map_SECONDARYTHUMBSTICK", "+button8", CVAR_ARCHIVE); // Sprint (UrT)
 	Cvar_Get ("vr_button_map_SECONDARYTHUMBSTICK_ALT", "", CVAR_ARCHIVE); // unmapped
 	Cvar_Get ("vr_button_map_PRIMARYTHUMBSTICK_ALT", "", CVAR_ARCHIVE); // unmapped
-	Cvar_Get ("vr_button_map_SECONDARYTRIGGER", "+moveup", CVAR_ARCHIVE); // Also Jump
+	Cvar_Get ("vr_button_map_SECONDARYTRIGGER", "+button7", CVAR_ARCHIVE); // Interact / pick up: doors, defuse (UrT)
 	Cvar_Get ("vr_button_map_SECONDARYTRIGGER_ALT", "", CVAR_ARCHIVE); // unmapped
 	Cvar_Get ("vr_button_map_PRIMARYTRIGGER", "+attack", CVAR_ARCHIVE); // Fire
 	Cvar_Get ("vr_button_map_PRIMARYTRIGGER_ALT", "", CVAR_ARCHIVE); // unmapped
 	Cvar_Get ("vr_button_map_SECONDARYGRIP", "+weapon_stabilise", CVAR_ARCHIVE); // Weapon stabilisation
 	Cvar_Get ("vr_button_map_SECONDARYGRIP_ALT", "", CVAR_ARCHIVE); // unmapped
+
+	// Urban Terror: +button5 = reload ("R"), +button3 = weapon fire mode. Quake 3's +button2
+	// (use item) does nothing in UrT, so that button switches the fire mode. Migrates configs
+	// saved by earlier builds.
+	if ( !strcmp( Cvar_VariableString( "vr_button_map_Y" ), "+button3" ) ) Cvar_Set( "vr_button_map_Y", "+button5" );
+	if ( !strcmp( Cvar_VariableString( "vr_button_map_B" ), "+button3" ) ) Cvar_Set( "vr_button_map_B", "+button5" );
+	if ( !strcmp( Cvar_VariableString( "vr_button_map_X" ), "+button2" ) ) Cvar_Set( "vr_button_map_X", "+button3" );
+	if ( !strcmp( Cvar_VariableString( "vr_button_map_A" ), "+button2" ) ) Cvar_Set( "vr_button_map_A", "+button3" );
+	// left trigger = interact (+button7), right stick click = bandage (+button6), left stick
+	// click = sprint (+button8); the old second jump / unused / scoreboard bindings migrate
+	if ( !strcmp( Cvar_VariableString( "vr_button_map_SECONDARYTRIGGER" ), "+moveup" ) ) Cvar_Set( "vr_button_map_SECONDARYTRIGGER", "+button7" );
+	if ( !Cvar_VariableString( "vr_button_map_PRIMARYTHUMBSTICK" )[0] ) Cvar_Set( "vr_button_map_PRIMARYTHUMBSTICK", "+button6" );
+	if ( !strcmp( Cvar_VariableString( "vr_button_map_SECONDARYTHUMBSTICK" ), "+scores" ) ) Cvar_Set( "vr_button_map_SECONDARYTHUMBSTICK", "+button8" );
+
 	Cvar_Get ("vr_button_map_PRIMARYGRIP_ALT", "", CVAR_ARCHIVE); // unmapped
 
     vr.menuYaw = 0;
