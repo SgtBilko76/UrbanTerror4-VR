@@ -11,6 +11,7 @@
 
 static engine_t vr_engine;
 qboolean vr_initialized = qfalse;
+qboolean vr_cylinderSupported = qfalse;
 extern vr_clientinfo_t vr;
 
 const char* const requiredExtensionNames[] = {
@@ -99,8 +100,35 @@ engine_t* VR_Init( ovrJava java )
     instanceCreateInfo.applicationInfo = appInfo;
     instanceCreateInfo.enabledApiLayerCount = 0;
     instanceCreateInfo.enabledApiLayerNames = NULL;
-    instanceCreateInfo.enabledExtensionCount = numRequiredExtensions;
-    instanceCreateInfo.enabledExtensionNames = requiredExtensionNames;
+    // The curved menu panel needs XR_KHR_composition_layer_cylinder; only ask for it if the
+    // runtime has it, otherwise xrCreateInstance would fail.
+    const char* extensionNames[16];
+    uint32_t extensionCount = 0;
+    for (uint32_t i = 0; i < numRequiredExtensions; i++) {
+        extensionNames[extensionCount++] = requiredExtensionNames[i];
+    }
+    {
+        uint32_t propCount = 0;
+        vr_cylinderSupported = qfalse;
+        if (xrEnumerateInstanceExtensionProperties(NULL, 0, &propCount, NULL) == XR_SUCCESS && propCount > 0) {
+            XrExtensionProperties* props = calloc(propCount, sizeof(XrExtensionProperties));
+            for (uint32_t i = 0; i < propCount; i++) props[i].type = XR_TYPE_EXTENSION_PROPERTIES;
+            if (xrEnumerateInstanceExtensionProperties(NULL, propCount, &propCount, props) == XR_SUCCESS) {
+                for (uint32_t i = 0; i < propCount; i++) {
+                    if (!strcmp(props[i].extensionName, XR_KHR_COMPOSITION_LAYER_CYLINDER_EXTENSION_NAME)) {
+                        vr_cylinderSupported = qtrue;
+                    }
+                }
+            }
+            free(props);
+        }
+        if (vr_cylinderSupported) {
+            extensionNames[extensionCount++] = XR_KHR_COMPOSITION_LAYER_CYLINDER_EXTENSION_NAME;
+        }
+        ALOGV("Cylinder layer %s", vr_cylinderSupported ? "supported" : "not supported");
+    }
+    instanceCreateInfo.enabledExtensionCount = extensionCount;
+    instanceCreateInfo.enabledExtensionNames = extensionNames;
 
     XrResult initResult;
     OXR(initResult = xrCreateInstance(&instanceCreateInfo, &vr_engine.appState.Instance));
@@ -163,6 +191,9 @@ void VR_InitCvars( void )
 	Cvar_Get ("vr_urtControllerAim", "1", CVAR_ARCHIVE); // aim with the dominant controller (UrT)
 	Cvar_Get ("vr_urtLaser", "1", CVAR_ARCHIVE); // laser sight from the hand
 	Cvar_Get ("vr_urtCrosshair", "1", CVAR_ARCHIVE); // 3D crosshair where the hand aims
+	Cvar_Get ("vr_menuCurved", "1", CVAR_ARCHIVE); // curved menu panel (cylinder layer)
+	Cvar_Get ("vr_menuRadius", "5", CVAR_ARCHIVE); // distance of the curved menu panel (metres)
+	Cvar_Get ("vr_menuLaser", "1", CVAR_ARCHIVE); // laser pointer in menus
 	Cvar_Get ("vr_urtCrosshairSize", "2.5", CVAR_ARCHIVE); // crosshair size in degrees
 	Cvar_Get ("vr_urtArms", "1", CVAR_ARCHIVE); // UrT arms: right hand with the gun, left arm on the left controller
 	Cvar_Get ("vr_urtLeftHandForward", "0", CVAR_ARCHIVE); // left hand offset from the left controller (units)

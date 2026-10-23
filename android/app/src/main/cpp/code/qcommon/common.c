@@ -2818,17 +2818,8 @@ void Com_Init( char *commandLine ) {
 	// add + commands from command line
 	if ( !Com_AddStartupCommands() ) {
 		// if the user didn't give any commands, run default action
-		if ( !com_dedicated->integer ) {
-#ifdef CINEMATICS_LOGO
-			Cbuf_AddText ("cinematic " CINEMATICS_LOGO "\n");
-#endif
-#ifdef CINEMATICS_INTRO
-			if( !com_introPlayed->integer ) {
-				Cvar_Set( com_introPlayed->name, "1" );
-				Cvar_Set( "nextmap", "cinematic " CINEMATICS_INTRO );
-			}
-#endif
-		}
+		// Quest: no start-up videos. The id logo cinematic broke loading Urban Terror's main
+		// menu; the game goes straight to the menu instead.
 	}
 
 	// start in full screen ui mode

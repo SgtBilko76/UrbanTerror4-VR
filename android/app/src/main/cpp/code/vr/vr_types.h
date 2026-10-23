@@ -31,9 +31,11 @@
 typedef union {
     XrCompositionLayerProjection Projection;
     XrCompositionLayerQuad Quad;
+    XrCompositionLayerCylinderKHR Cylinder;
 } ovrCompositorLayer_Union;
 
-enum { ovrMaxLayerCount = 1 };
+// menu panel + laser pointer layer
+enum { ovrMaxLayerCount = 2 };
 enum { ovrMaxNumEyes = 2 };
 
 #define GL(func) func;

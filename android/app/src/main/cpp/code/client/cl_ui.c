@@ -722,6 +722,9 @@ CL_UISystemCalls
 The ui module is making a system call
 ====================
 */
+int cl_uiCursorShader, cl_uiCursorDrawnTime;
+float cl_uiCursorDrawn[4];
+
 intptr_t CL_UISystemCalls( intptr_t *args ) {
 	switch( args[0] ) {
 	case UI_ERROR:
@@ -816,8 +819,14 @@ intptr_t CL_UISystemCalls( intptr_t *args ) {
 	case UI_R_REGISTERSKIN:
 		return re.RegisterSkin( VMA(1) );
 
-	case UI_R_REGISTERSHADERNOMIP:
-		return re.RegisterShaderNoMip( VMA(1) );
+	case UI_R_REGISTERSHADERNOMIP: {
+		qhandle_t h = re.RegisterShaderNoMip( VMA(1) );
+		if ( strstr( (const char *)VMA(1), "cursor" ) ) {	// VR laser pointer: recognise the UI's cursor
+			extern int cl_uiCursorShader;
+			cl_uiCursorShader = h;
+		}
+		return h;
+	}
 
 	case UI_R_CLEARSCENE:
 		re.ClearScene();
@@ -851,6 +860,17 @@ intptr_t CL_UISystemCalls( intptr_t *args ) {
 
 	case UI_R_DRAWSTRETCHPIC:
 		re.DrawStretchPic( VMF(1), VMF(2), VMF(3), VMF(4), VMF(5), VMF(6), VMF(7), VMF(8), args[9] );
+		{	// VR laser pointer: where the UI draws its cursor (640x480 units)
+			extern int cl_uiCursorShader, cl_uiCursorDrawnTime;
+			extern float cl_uiCursorDrawn[4];
+			if ( cl_uiCursorShader && args[9] == cl_uiCursorShader ) {
+				cl_uiCursorDrawn[0] = VMF(1) * 640.0f / cls.glconfig.vidWidth;
+				cl_uiCursorDrawn[1] = VMF(2) * 480.0f / cls.glconfig.vidHeight;
+				cl_uiCursorDrawn[2] = VMF(3) * 640.0f / cls.glconfig.vidWidth;
+				cl_uiCursorDrawn[3] = VMF(4) * 480.0f / cls.glconfig.vidHeight;
+				cl_uiCursorDrawnTime = cls.realtime;
+			}
+		}
 		return 0;
 
   case UI_R_MODELBOUNDS:

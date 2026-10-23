@@ -357,6 +357,390 @@ void VR_ClearFrameBuffer( int width, int height)
 // image -- so the zoomed view drifts off axis, and every 2D overlay drawn while zoomed (the
 // weapon scope above all) is corrected against a principal point the compositor is not using.
 // Scaling the tangents leaves that term untouched and magnifies about the axis, as a scope should.
+
+/*
+================================================================================
+
+Menu panel and laser pointer
+
+The menu is a flat quad or a curved (cylinder) compositor layer centred on the head. The
+pointer is a ray from the menu hand's aim pose; where it hits the panel becomes the UI cursor,
+and a beam is drawn on its own projection layer on top of the panel.
+
+================================================================================
+*/
+extern qboolean vr_cylinderSupported;
+extern cvar_t *vr_righthanded;
+
+#define MENU_FLAT_DISTANCE 14.0f
+#define MENU_FLAT_WIDTH (8.0f * (MATH_PI * 0.5f) * 1.15f)
+
+typedef struct {
+    qboolean curved;
+    float radius;       // curved: cylinder radius; flat: distance
+    float width;        // flat: width; curved: arc length
+    float height;
+    float centralAngle; // curved only
+} menuPanel_t;
+
+static void VR_GetMenuPanel(menuPanel_t* p, int width, int height) {
+    const float aspect = width / (float)height / 0.75f;
+    const float flatHeight = MENU_FLAT_WIDTH / aspect;
+    p->curved = vr_cylinderSupported && Cvar_VariableIntegerValue("vr_menuCurved");
+    if (p->curved) {
+        // same angular size as the flat panel
+        float r = Cvar_VariableValue("vr_menuRadius");
+        if (r < 1.0f) r = 1.0f;
+        p->radius = r;
+        p->centralAngle = 2.0f * atanf(MENU_FLAT_WIDTH * 0.5f / MENU_FLAT_DISTANCE);
+        p->width = r * p->centralAngle;
+        p->height = 2.0f * r * (flatHeight * 0.5f / MENU_FLAT_DISTANCE);
+    } else {
+        p->radius = MENU_FLAT_DISTANCE;
+        p->width = MENU_FLAT_WIDTH;
+        p->height = flatHeight;
+        p->centralAngle = 0.0f;
+    }
+}
+
+static void VR_QuatRotate(const XrQuaternionf* q, const float v[3], float out[3]) {
+    // out = q * v * q^-1
+    float tx = 2.0f * (q->y * v[2] - q->z * v[1]);
+    float ty = 2.0f * (q->z * v[0] - q->x * v[2]);
+    float tz = 2.0f * (q->x * v[1] - q->y * v[0]);
+    out[0] = v[0] + q->w * tx + (q->y * tz - q->z * ty);
+    out[1] = v[1] + q->w * ty + (q->z * tx - q->x * tz);
+    out[2] = v[2] + q->w * tz + (q->x * ty - q->y * tx);
+}
+
+static qboolean menuLaserVisible;
+static float menuLaserStart[3], menuLaserEnd[3];
+static qboolean menuLaserHit;
+static int menuPointerLastX = -1, menuPointerLastY = -1;
+
+static void VR_UpdateMenuPointer(engine_t* engine, const XrPosef* head, qboolean screenLayer) {
+    menuLaserVisible = qfalse;
+    menuLaserHit = qfalse;
+    if (!screenLayer || !(Key_GetCatcher() & KEYCATCH_UI) || (Key_GetCatcher() & KEYCATCH_CONSOLE)) {
+        menuPointerLastX = menuPointerLastY = -1;
+        return;
+    }
+
+    // menu hand: the dominant hand unless the menu was switched to the other one
+    qboolean right = (vr_righthanded->integer != 0);
+    if (vr.menuLeftHanded) right = !right;
+    ovrTrackedController* c = &engine->appState.TrackedController[right ? 1 : 0];
+    if (!c->Active) return;
+
+    const float fwd[3] = {0.0f, 0.0f, -1.0f};
+    float dir[3], o[3], d[3];
+    VR_QuatRotate(&c->Pose.orientation, fwd, dir);
+
+    // into the panel frame: centred on the head, rotated by the menu yaw about +Y
+    const float th = radians(vr.menuYaw), cs = cosf(th), sn = sinf(th);
+    const float px = c->Pose.position.x - head->position.x;
+    const float py = c->Pose.position.y - head->position.y;
+    const float pz = c->Pose.position.z - head->position.z;
+    o[0] = px * cs - pz * sn; o[1] = py; o[2] = px * sn + pz * cs;
+    d[0] = dir[0] * cs - dir[2] * sn; d[1] = dir[1]; d[2] = dir[0] * sn + dir[2] * cs;
+
+    menuPanel_t panel;
+    VR_GetMenuPanel(&panel, engine->appState.Renderer.FrameBuffer.ColorSwapChain.Width,
+                    engine->appState.Renderer.FrameBuffer.ColorSwapChain.Height);
+
+    float t = -1.0f, u = 0.0f, v = 0.0f;
+    if (panel.curved) {
+        float a = d[0] * d[0] + d[2] * d[2];
+        float b = 2.0f * (o[0] * d[0] + o[2] * d[2]);
+        float cc = o[0] * o[0] + o[2] * o[2] - panel.radius * panel.radius;
+        float disc = b * b - 4.0f * a * cc;
+        if (a > 1e-6f && disc >= 0.0f) {
+            t = (-b + sqrtf(disc)) / (2.0f * a);
+            float hx = o[0] + t * d[0], hz = o[2] + t * d[2];
+            u = atan2f(hx, -hz) / panel.centralAngle + 0.5f;
+        }
+    } else if (d[2] < -1e-4f) {
+        t = (-panel.radius - o[2]) / d[2];
+        u = (o[0] + t * d[0]) / panel.width + 0.5f;
+    }
+    if (t > 0.0f) {
+        v = 0.5f - (o[1] + t * d[1]) / panel.height;
+    }
+
+    for (int k = 0; k < 3; k++) {
+        menuLaserStart[k] = (&c->Pose.position.x)[k];
+    }
+    if (t > 0.0f && u >= -0.02f && u <= 1.02f && v >= -0.02f && v <= 1.02f) {
+        menuLaserHit = qtrue;
+        for (int k = 0; k < 3; k++) menuLaserEnd[k] = menuLaserStart[k] + dir[k] * t;
+
+        int x = (int)(Com_Clamp(0.0f, 1.0f, u) * SCREEN_WIDTH + 0.5f);
+        int y = (int)(Com_Clamp(0.0f, 1.0f, v) * SCREEN_HEIGHT + 0.5f);
+        if (vr.menuCursorX && vr.menuCursorY) {
+            // a VR-aware UI hands us its cursor
+            *vr.menuCursorX = x;
+            *vr.menuCursorY = y;
+            Com_QueueEvent(Sys_Milliseconds(), SE_MOUSE, 0, 0, 0, NULL);
+        } else {
+            // QVM menus (Urban Terror's ui.qvm) only take relative mouse moves, and the engine
+            // merges queued mouse moves, so the cursor is steered by difference: from where the
+            // UI last drew it (centre of its cursor picture) to the beam's point.
+            extern int cl_uiCursorShader, cl_uiCursorDrawnTime;
+            extern float cl_uiCursorDrawn[4];
+            static int lastSend;
+            qboolean seen = cl_uiCursorShader && cls.realtime - cl_uiCursorDrawnTime < 250;
+            int obsX = (int)(cl_uiCursorDrawn[0] + cl_uiCursorDrawn[2] * 0.5f + 0.5f);
+            int obsY = (int)(cl_uiCursorDrawn[1] + cl_uiCursorDrawn[3] * 0.5f + 0.5f);
+            if (menuPointerLastX < 0) {
+                if (seen) {
+                    menuPointerLastX = obsX; menuPointerLastY = obsY;
+                } else {
+                    Com_QueueEvent(Sys_Milliseconds(), SE_MOUSE, -4 * SCREEN_WIDTH, -4 * SCREEN_HEIGHT, 0, NULL);
+                    menuPointerLastX = 0; menuPointerLastY = 0;
+                    lastSend = cls.realtime;
+                }
+            } else if (seen && cls.realtime - lastSend > 100 &&
+                       (abs(obsX - menuPointerLastX) > 1 || abs(obsY - menuPointerLastY) > 1)) {
+                // the UI's cursor is not where we think (e.g. it moved it itself): resync
+                menuPointerLastX = obsX; menuPointerLastY = obsY;
+            }
+            if (x != menuPointerLastX || y != menuPointerLastY) {
+                Com_QueueEvent(Sys_Milliseconds(), SE_MOUSE, x - menuPointerLastX, y - menuPointerLastY, 0, NULL);
+                menuPointerLastX = x;
+                menuPointerLastY = y;
+                lastSend = cls.realtime;
+            }
+        }
+    } else {
+        for (int k = 0; k < 3; k++) menuLaserEnd[k] = menuLaserStart[k] + dir[k] * 3.0f;
+    }
+    menuLaserVisible = Cvar_VariableIntegerValue("vr_menuLaser") != 0;
+}
+
+// --- laser beam layer: own colour-only stereo swapchain, drawn with a tiny shader ---
+#define LASER_SCALE 0.6f
+static XrSwapchain laserSwapchain = XR_NULL_HANDLE;
+static XrSwapchainImageOpenGLESKHR* laserImages;
+static uint32_t laserImageCount;
+static GLuint* laserFbos;   // [image * 2 + eye]
+static int laserW, laserH;
+static GLuint laserProgram, laserVao, laserVbo;
+
+static GLuint VR_LaserCompile(GLenum type, const char* src) {
+    GLuint sh = glCreateShader(type);
+    GLint ok = 0;
+    glShaderSource(sh, 1, &src, NULL);
+    glCompileShader(sh);
+    glGetShaderiv(sh, GL_COMPILE_STATUS, &ok);
+    if (!ok) {
+        char log[512];
+        glGetShaderInfoLog(sh, sizeof(log), NULL, log);
+        ALOGE("Laser shader: %s", log);
+    }
+    return sh;
+}
+
+static qboolean VR_LaserInit(engine_t* engine) {
+    if (laserSwapchain != XR_NULL_HANDLE) return qtrue;
+    laserW = (int)(engine->appState.Renderer.FrameBuffer.ColorSwapChain.Width * LASER_SCALE);
+    laserH = (int)(engine->appState.Renderer.FrameBuffer.ColorSwapChain.Height * LASER_SCALE);
+
+    XrSwapchainCreateInfo ci = {XR_TYPE_SWAPCHAIN_CREATE_INFO};
+    ci.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
+    ci.format = GL_RGBA8;
+    ci.sampleCount = 1;
+    ci.width = laserW;
+    ci.height = laserH;
+    ci.faceCount = 1;
+    ci.arraySize = 2;
+    ci.mipCount = 1;
+    if (xrCreateSwapchain(engine->appState.Session, &ci, &laserSwapchain) != XR_SUCCESS) {
+        laserSwapchain = XR_NULL_HANDLE;
+        return qfalse;
+    }
+    xrEnumerateSwapchainImages(laserSwapchain, 0, &laserImageCount, NULL);
+    laserImages = calloc(laserImageCount, sizeof(XrSwapchainImageOpenGLESKHR));
+    for (uint32_t i = 0; i < laserImageCount; i++) laserImages[i].type = XR_TYPE_SWAPCHAIN_IMAGE_OPENGL_ES_KHR;
+    xrEnumerateSwapchainImages(laserSwapchain, laserImageCount, &laserImageCount, (XrSwapchainImageBaseHeader*)laserImages);
+    laserFbos = calloc(laserImageCount * 2, sizeof(GLuint));
+    glGenFramebuffers(laserImageCount * 2, laserFbos);
+    for (uint32_t i = 0; i < laserImageCount; i++) {
+        for (int eye = 0; eye < 2; eye++) {
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, laserFbos[i * 2 + eye]);
+            glFramebufferTextureLayer(GL_DRAW_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, laserImages[i].image, 0, eye);
+        }
+    }
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+
+    const char* vs = "#version 300 es\nlayout(location=0) in vec4 aPos;\nlayout(location=1) in vec4 aCol;\nout vec4 vCol;\nvoid main(){ gl_Position = aPos; vCol = aCol; }\n";
+    const char* fs = "#version 300 es\nprecision mediump float;\nin vec4 vCol;\nout vec4 o;\nvoid main(){ o = vCol; }\n";
+    laserProgram = glCreateProgram();
+    glAttachShader(laserProgram, VR_LaserCompile(GL_VERTEX_SHADER, vs));
+    glAttachShader(laserProgram, VR_LaserCompile(GL_FRAGMENT_SHADER, fs));
+    glLinkProgram(laserProgram);
+    glGenVertexArrays(1, &laserVao);
+    glGenBuffers(1, &laserVbo);
+    ALOGV("Laser layer %dx%d, %u images", laserW, laserH, laserImageCount);
+    return qtrue;
+}
+
+// view-space point -> clip space for an OpenXR fov (z forward is -z)
+static qboolean VR_LaserProject(const XrFovf* fov, const float p[3], float out[4]) {
+    float w = -p[2];
+    if (w < 0.02f) return qfalse;
+    float l = tanf(fov->angleLeft), r = tanf(fov->angleRight);
+    float d = tanf(fov->angleDown), u = tanf(fov->angleUp);
+    out[0] = (2.0f * p[0] - (r + l) * w) / (r - l);
+    out[1] = (2.0f * p[1] - (u + d) * w) / (u - d);
+    out[2] = 0.0f;
+    out[3] = w;
+    return qtrue;
+}
+
+static void VR_LaserToView(const XrPosef* eye, const float p[3], float out[3]) {
+    XrQuaternionf inv = {-eye->orientation.x, -eye->orientation.y, -eye->orientation.z, eye->orientation.w};
+    float d[3] = {p[0] - eye->position.x, p[1] - eye->position.y, p[2] - eye->position.z};
+    VR_QuatRotate(&inv, d, out);
+}
+
+// one quad = 2 triangles = 6 vertices of (pos4, col4)
+static int VR_LaserQuad(float* vb, const float a[4], const float b[4], const float c[4], const float d[4], const float col[4]) {
+    const float* v[6] = {a, b, c, a, c, d};
+    for (int i = 0; i < 6; i++) {
+        memcpy(vb + i * 8, v[i], 4 * sizeof(float));
+        memcpy(vb + i * 8 + 4, col, 4 * sizeof(float));
+    }
+    return 6;
+}
+
+static qboolean VR_RenderLaserLayer(engine_t* engine, const XrView* views, XrCompositionLayerProjectionView* outViews) {
+    if (!menuLaserVisible || !VR_LaserInit(engine)) return qfalse;
+
+    uint32_t index = 0;
+    XrSwapchainImageAcquireInfo acq = {XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO};
+    if (xrAcquireSwapchainImage(laserSwapchain, &acq, &index) != XR_SUCCESS) return qfalse;
+    XrSwapchainImageWaitInfo wait = {XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
+    wait.timeout = 1000000000;
+    if (xrWaitSwapchainImage(laserSwapchain, &wait) != XR_SUCCESS) return qfalse;
+
+    // save the GL state the engine's renderer caches
+    GLint prevFbo, prevProgram, prevVao, prevBuffer, prevViewport[4];
+    GLboolean prevBlend = glIsEnabled(GL_BLEND), prevDepth = glIsEnabled(GL_DEPTH_TEST);
+    GLboolean prevCull = glIsEnabled(GL_CULL_FACE), prevScissor = glIsEnabled(GL_SCISSOR_TEST);
+    GLboolean prevStencil = glIsEnabled(GL_STENCIL_TEST), prevMask[4];
+    GLint prevSrcRGB, prevDstRGB, prevSrcA, prevDstA;
+    GLfloat prevClear[4];
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &prevFbo);
+    glGetIntegerv(GL_CURRENT_PROGRAM, &prevProgram);
+    glGetIntegerv(GL_VERTEX_ARRAY_BINDING, &prevVao);
+    glGetIntegerv(GL_ARRAY_BUFFER_BINDING, &prevBuffer);
+    glGetIntegerv(GL_VIEWPORT, prevViewport);
+    glGetIntegerv(GL_BLEND_SRC_RGB, &prevSrcRGB);
+    glGetIntegerv(GL_BLEND_DST_RGB, &prevDstRGB);
+    glGetIntegerv(GL_BLEND_SRC_ALPHA, &prevSrcA);
+    glGetIntegerv(GL_BLEND_DST_ALPHA, &prevDstA);
+    glGetBooleanv(GL_COLOR_WRITEMASK, prevMask);
+    glGetFloatv(GL_COLOR_CLEAR_VALUE, prevClear);
+
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_CULL_FACE);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_STENCIL_TEST);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);   // premultiplied
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glUseProgram(laserProgram);
+    glBindVertexArray(laserVao);
+    glBindBuffer(GL_ARRAY_BUFFER, laserVbo);
+    glEnableVertexAttribArray(0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(4 * sizeof(float)));
+
+    for (int eye = 0; eye < 2; eye++) {
+        float vb[8 * 6 * 3];
+        int n = 0;
+        float a[3], b[3];
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, laserFbos[index * 2 + eye]);
+        glViewport(0, 0, laserW, laserH);
+        glClearColor(0, 0, 0, 0);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        VR_LaserToView(&views[eye].pose, menuLaserStart, a);
+        VR_LaserToView(&views[eye].pose, menuLaserEnd, b);
+        if (a[2] > -0.03f) {   // start behind the eye plane: begin a bit in front of it
+            float t = (-0.03f - a[2]) / (b[2] - a[2]);
+            if (b[2] < -0.03f && t > 0.0f && t < 1.0f) {
+                for (int k = 0; k < 3; k++) a[k] += (b[k] - a[k]) * t;
+            }
+        }
+        // beam: a ribbon facing the eye, 1 mm wide at the hand, 5 mm at the panel
+        float line[3] = {b[0] - a[0], b[1] - a[1], b[2] - a[2]};
+        float mid[3] = {(a[0] + b[0]) * 0.5f, (a[1] + b[1]) * 0.5f, (a[2] + b[2]) * 0.5f};
+        float side[3] = {line[1] * mid[2] - line[2] * mid[1], line[2] * mid[0] - line[0] * mid[2], line[0] * mid[1] - line[1] * mid[0]};
+        float len = sqrtf(side[0] * side[0] + side[1] * side[1] + side[2] * side[2]);
+        if (len > 1e-6f) {
+            float wa = 0.0005f / len, wb = 0.0025f / len;
+            float p0[3], p1[3], p2[3], p3[3], c0[4], c1[4], c2[4], c3[4];
+            for (int k = 0; k < 3; k++) {
+                p0[k] = a[k] - side[k] * wa; p1[k] = a[k] + side[k] * wa;
+                p2[k] = b[k] + side[k] * wb; p3[k] = b[k] - side[k] * wb;
+            }
+            const float col[4] = {0.9f, 0.1f, 0.1f, 0.9f};   // premultiplied red
+            if (VR_LaserProject(&views[eye].fov, p0, c0) && VR_LaserProject(&views[eye].fov, p1, c1) &&
+                VR_LaserProject(&views[eye].fov, p2, c2) && VR_LaserProject(&views[eye].fov, p3, c3)) {
+                n += VR_LaserQuad(vb + n * 8, c0, c1, c2, c3, col);
+            }
+        }
+        // dot where the beam meets the panel
+        if (menuLaserHit) {
+            const float s = 0.012f * (-b[2]) / 5.0f + 0.003f;
+            float q0[3] = {b[0] - s, b[1] - s, b[2]}, q1[3] = {b[0] + s, b[1] - s, b[2]};
+            float q2[3] = {b[0] + s, b[1] + s, b[2]}, q3[3] = {b[0] - s, b[1] + s, b[2]};
+            float c0[4], c1[4], c2[4], c3[4];
+            const float col[4] = {1.0f, 0.3f, 0.3f, 1.0f};
+            if (VR_LaserProject(&views[eye].fov, q0, c0) && VR_LaserProject(&views[eye].fov, q1, c1) &&
+                VR_LaserProject(&views[eye].fov, q2, c2) && VR_LaserProject(&views[eye].fov, q3, c3)) {
+                n += VR_LaserQuad(vb + n * 8, c0, c1, c2, c3, col);
+            }
+        }
+        if (n) {
+            glBufferData(GL_ARRAY_BUFFER, n * 8 * sizeof(float), vb, GL_STREAM_DRAW);
+            glDrawArrays(GL_TRIANGLES, 0, n);
+        }
+
+        memset(&outViews[eye], 0, sizeof(outViews[eye]));
+        outViews[eye].type = XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW;
+        outViews[eye].pose = views[eye].pose;
+        outViews[eye].fov = views[eye].fov;
+        outViews[eye].subImage.swapchain = laserSwapchain;
+        outViews[eye].subImage.imageRect.extent.width = laserW;
+        outViews[eye].subImage.imageRect.extent.height = laserH;
+        outViews[eye].subImage.imageArrayIndex = eye;
+    }
+
+    // restore
+    glDisableVertexAttribArray(0);
+    glDisableVertexAttribArray(1);
+    glBindVertexArray(prevVao);
+    glBindBuffer(GL_ARRAY_BUFFER, prevBuffer);
+    glUseProgram(prevProgram);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, prevFbo);
+    glViewport(prevViewport[0], prevViewport[1], prevViewport[2], prevViewport[3]);
+    glBlendFuncSeparate(prevSrcRGB, prevDstRGB, prevSrcA, prevDstA);
+    if (!prevBlend) glDisable(GL_BLEND);
+    if (prevDepth) glEnable(GL_DEPTH_TEST);
+    if (prevCull) glEnable(GL_CULL_FACE);
+    if (prevScissor) glEnable(GL_SCISSOR_TEST);
+    if (prevStencil) glEnable(GL_STENCIL_TEST);
+    glColorMask(prevMask[0], prevMask[1], prevMask[2], prevMask[3]);
+    glClearColor(prevClear[0], prevClear[1], prevClear[2], prevClear[3]);
+
+    XrSwapchainImageReleaseInfo rel = {XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO};
+    xrReleaseSwapchainImage(laserSwapchain, &rel);
+    return qtrue;
+}
+
 static float VR_ZoomAngle( float angle, float zoomLevel ) {
     if (zoomLevel <= 1.0f) {
         return angle;
@@ -516,6 +900,7 @@ void VR_DrawFrame( engine_t* engine ) {
     // Update HMD and controllers
     IN_VRUpdateHMD( invViewTransform[0] );
     IN_VRUpdateControllers( invViewTransform[0], frameState.predictedDisplayTime );
+    VR_UpdateMenuPointer( engine, &invViewTransform[0], screenLayer );
     IN_VRSyncActions();
 
     //Projection used for drawing HUD models etc
@@ -565,6 +950,7 @@ void VR_DrawFrame( engine_t* engine ) {
     ovrFramebuffer_SetNone();
 
     XrCompositionLayerProjectionView projection_layer_elements[2] = {};
+    static XrCompositionLayerProjectionView laser_layer_elements[2];
     // Reuse the value the projections were built from, so the layer choice cannot disagree with
     // them if the key catcher changes during Com_Frame.
     if (!screenLayer && !(VR_PS_FOLLOWING(cl.snap.ps) && vr.follow_mode == VRFM_FIRSTPERSON)) {
@@ -605,41 +991,63 @@ void VR_DrawFrame( engine_t* engine ) {
 
         fullscreenMode = qtrue;
 
-        // Build the quad layer. This replaced a cylinder of radius 8 whose axis sat 6 metres
-        // ahead, so its image was 14 metres out and 8 * (pi/2) metres of arc wide. The quad
-        // keeps that distance and aspect; menuScale is the only knob for its size.
+        // The menu panel: a curved cylinder centred on the head (XR_KHR_composition_layer_cylinder)
+        // or, without the extension / with vr_menuCurved 0, the flat quad 14 m ahead.
         int width = engine->appState.Renderer.FrameBuffer.ColorSwapChain.Width;
         int height = engine->appState.Renderer.FrameBuffer.ColorSwapChain.Height;
-
-        const float menuDistance = 14.0f;
-        const float menuScale = 1.15f;
-        const float menuWidth = 8.0f * (MATH_PI * 0.5f) * menuScale;
-        const float menuAspect = width / (float)height / 0.75f;
-
-        XrCompositionLayerQuad quad_layer = {};
-        quad_layer.type = XR_TYPE_COMPOSITION_LAYER_QUAD;
-        quad_layer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
-        quad_layer.space = engine->appState.CurrentSpace;
-        quad_layer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
-        memset(&quad_layer.subImage, 0, sizeof(XrSwapchainSubImage));
-        quad_layer.subImage.swapchain = engine->appState.Renderer.FrameBuffer.ColorSwapChain.Handle;
-        quad_layer.subImage.imageRect.offset.x = 0;
-        quad_layer.subImage.imageRect.offset.y = 0;
-        quad_layer.subImage.imageRect.extent.width = width;
-        quad_layer.subImage.imageRect.extent.height = height;
-        quad_layer.subImage.imageArrayIndex = 0;
+        menuPanel_t panel;
+        VR_GetMenuPanel(&panel, width, height);
         const XrVector3f axis = {0.0f, 1.0f, 0.0f};
-        XrVector3f pos = {
-                invViewTransform[0].position.x - sin(radians(vr.menuYaw)) * menuDistance,
-                invViewTransform[0].position.y,
-                invViewTransform[0].position.z - cos(radians(vr.menuYaw)) * menuDistance
-        };
-        quad_layer.pose.orientation = XrQuaternionf_CreateFromVectorAngle(axis, radians(vr.menuYaw));
-        quad_layer.pose.position = pos;
-        quad_layer.size.width = menuWidth;
-        quad_layer.size.height = menuWidth / menuAspect;
 
-        engine->appState.Layers[engine->appState.LayerCount++].Quad = quad_layer;
+        if (panel.curved) {
+            XrCompositionLayerCylinderKHR cylinder_layer = {};
+            cylinder_layer.type = XR_TYPE_COMPOSITION_LAYER_CYLINDER_KHR;
+            cylinder_layer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+            cylinder_layer.space = engine->appState.CurrentSpace;
+            cylinder_layer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+            cylinder_layer.subImage.swapchain = engine->appState.Renderer.FrameBuffer.ColorSwapChain.Handle;
+            cylinder_layer.subImage.imageRect.extent.width = width;
+            cylinder_layer.subImage.imageRect.extent.height = height;
+            cylinder_layer.subImage.imageArrayIndex = 0;
+            cylinder_layer.pose.orientation = XrQuaternionf_CreateFromVectorAngle(axis, radians(vr.menuYaw));
+            cylinder_layer.pose.position = invViewTransform[0].position;
+            cylinder_layer.radius = panel.radius;
+            cylinder_layer.centralAngle = panel.centralAngle;
+            cylinder_layer.aspectRatio = panel.width / panel.height;
+            engine->appState.Layers[engine->appState.LayerCount++].Cylinder = cylinder_layer;
+        } else {
+            XrCompositionLayerQuad quad_layer = {};
+            quad_layer.type = XR_TYPE_COMPOSITION_LAYER_QUAD;
+            quad_layer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+            quad_layer.space = engine->appState.CurrentSpace;
+            quad_layer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+            memset(&quad_layer.subImage, 0, sizeof(XrSwapchainSubImage));
+            quad_layer.subImage.swapchain = engine->appState.Renderer.FrameBuffer.ColorSwapChain.Handle;
+            quad_layer.subImage.imageRect.extent.width = width;
+            quad_layer.subImage.imageRect.extent.height = height;
+            quad_layer.subImage.imageArrayIndex = 0;
+            XrVector3f pos = {
+                    invViewTransform[0].position.x - sin(radians(vr.menuYaw)) * panel.radius,
+                    invViewTransform[0].position.y,
+                    invViewTransform[0].position.z - cos(radians(vr.menuYaw)) * panel.radius
+            };
+            quad_layer.pose.orientation = XrQuaternionf_CreateFromVectorAngle(axis, radians(vr.menuYaw));
+            quad_layer.pose.position = pos;
+            quad_layer.size.width = panel.width;
+            quad_layer.size.height = panel.height;
+            engine->appState.Layers[engine->appState.LayerCount++].Quad = quad_layer;
+        }
+
+        // laser pointer on top of the panel
+        if (VR_RenderLaserLayer(engine, projections, laser_layer_elements)) {
+            XrCompositionLayerProjection laser_layer = {};
+            laser_layer.type = XR_TYPE_COMPOSITION_LAYER_PROJECTION;
+            laser_layer.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
+            laser_layer.space = engine->appState.CurrentSpace;
+            laser_layer.viewCount = ovrMaxNumEyes;
+            laser_layer.views = laser_layer_elements;
+            engine->appState.Layers[engine->appState.LayerCount++].Projection = laser_layer;
+        }
     }
 
     // Compose the layers for this frame.
