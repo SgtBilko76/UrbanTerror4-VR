@@ -278,7 +278,7 @@ void VR_InitCvars( void )
         } else {
             Cvar_Get ("vr_button_map_RTHUMBBACK", "", CVAR_ARCHIVE); // unmapped
         }
-        Cvar_Get ("vr_button_map_PRIMARYGRIP", "+weapon_select", CVAR_ARCHIVE); // weapon selector
+        Cvar_Get ("vr_button_map_PRIMARYGRIP", "+button5", CVAR_ARCHIVE); // Reload (UrT)
         Cvar_Get ("vr_button_map_PRIMARYTHUMBSTICK", "+button6", CVAR_ARCHIVE); // Bandage (UrT)
        	Cvar_Get ("vr_button_map_RTHUMBFORWARD_ALT", "", CVAR_ARCHIVE); // unmapped
        	Cvar_Get ("vr_button_map_RTHUMBRIGHT_ALT", "", CVAR_ARCHIVE); // unmapped
@@ -330,7 +330,7 @@ void VR_InitCvars( void )
 		Cvar_Get ("vr_button_map_A", "+movedown", CVAR_ARCHIVE); // Crouch
 		Cvar_Get ("vr_button_map_B", "+moveup", CVAR_ARCHIVE); // Jump (B, the user prefers it)
 		Cvar_Get ("vr_button_map_X", "+button3", CVAR_ARCHIVE); // Fire mode (UrT)
-		Cvar_Get ("vr_button_map_Y", "+button5", CVAR_ARCHIVE); // Reload (UrT)
+		Cvar_Get ("vr_button_map_Y", "+scores", CVAR_ARCHIVE); // Scoreboard (reload is on the right grip)
 	}
 
 
@@ -361,6 +361,16 @@ void VR_InitCvars( void )
 	if ( !strcmp( Cvar_VariableString( "vr_button_map_SECONDARYTRIGGER" ), "+moveup" ) ) Cvar_Set( "vr_button_map_SECONDARYTRIGGER", "+button7" );
 	if ( !Cvar_VariableString( "vr_button_map_PRIMARYTHUMBSTICK" )[0] ) Cvar_Set( "vr_button_map_PRIMARYTHUMBSTICK", "+button6" );
 	if ( !strcmp( Cvar_VariableString( "vr_button_map_SECONDARYTHUMBSTICK" ), "+scores" ) ) Cvar_Set( "vr_button_map_SECONDARYTHUMBSTICK", "+button8" );
+	// reload on the right grip (ioq3quest's weapon wheel there does nothing in UrT); Y, which had
+	// reload, becomes free. Only migrates configs that still have the old grip binding.
+	if ( !strcmp( Cvar_VariableString( "vr_button_map_PRIMARYGRIP" ), "+weapon_select" ) ) {
+		Cvar_Set( "vr_button_map_PRIMARYGRIP", "+button5" );
+		if ( !strcmp( Cvar_VariableString( "vr_button_map_Y" ), "+button5" ) ) Cvar_Set( "vr_button_map_Y", "+scores" );
+	}
+	// Y = scoreboard (it was briefly left empty)
+	if ( !Cvar_VariableIntegerValue( "vr_switchThumbsticks" ) && !Cvar_VariableString( "vr_button_map_Y" )[0] ) {
+		Cvar_Set( "vr_button_map_Y", "+scores" );
+	}
 	// B = jump, A = crouch (swapped from ioq3quest; saved configs with the old layout migrate)
 	if ( !Cvar_VariableIntegerValue( "vr_switchThumbsticks" ) &&
 			!strcmp( Cvar_VariableString( "vr_button_map_A" ), "+moveup" ) &&
