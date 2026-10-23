@@ -672,9 +672,11 @@ void SV_Init (void)
 	sv_allowDownload = Cvar_Get ("sv_allowDownload", "1", CVAR_SERVERINFO);
 	Cvar_Get ("sv_dlURL", "", CVAR_SERVERINFO | CVAR_ARCHIVE);
 	
-	vr_master[0] = Cvar_Get("vr_master1", "mp.quakevr.com:27950", 0); // This is set to our Q3Q master
-	vr_master[1] = Cvar_Get("vr_master2", MASTER_SERVER_NAME, 0);
-	vr_master[2] = Cvar_Get("vr_master3", "master.ioquake3.org", 0);
+	// Urban Terror's masters listen on 27900, not ioq3's PORT_MASTER 27950 (they never answer
+	// there). Quake 3 VR / ioquake3 masters only list Quake 3 servers, so they are not used.
+	vr_master[0] = Cvar_Get("vr_master1", "master.urbanterror.info:27900", 0);
+	vr_master[1] = Cvar_Get("vr_master2", "master2.urbanterror.info:27900", 0);
+	vr_master[2] = Cvar_Get("vr_master3", "", 0);
 	for(index = 3; index < MAX_MASTER_SERVERS; index++)
 		vr_master[index] = Cvar_Get(va("vr_master%d", index + 1), "", CVAR_ARCHIVE);
 
