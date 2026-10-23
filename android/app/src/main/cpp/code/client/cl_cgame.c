@@ -423,60 +423,56 @@ distance from the body and stopped at walls. The view weapon stays with the body
 */
 extern cvar_t *vr_worldscale;
 static void CL_VRHeadOffset( refdef_t *rd ) {
+	// QuakeQuest model: horizontal head movement moves the player (positional movement in
+	// vr_input.c, with collision), so the camera only gets the vertical offset here: real
+	// crouching / standing up relative to the height taken when play starts.
+	// vr_urtLeanCamera 1 = old behaviour (camera slides up to 0.6 m with the head).
 	static qboolean haveAnchor;
-	static vec3_t anchor;          // stage-space head position the body is centred under
+	static vec3_t anchor;
 	static vec3_t lastOrg;
-	const float maxLean = 0.6f;    // metres
+	static float playerHeight;
+	static int lastGameFrame = -10;
+	const float maxLean = 0.6f;
 	float scale, dx, dz, len, f, l, theta, gameYaw;
 	vec3_t offset, end, mins = { -4, -4, -4 }, maxs = { 4, 4, 4 };
 	trace_t tr;
 
-	if ( !Cvar_VariableIntegerValue( "vr_urtHeadTracking" ) ) {
-		return;
-	}
-
 	scale = vr_worldscale ? vr_worldscale->value : 32.0f;
+	VectorClear( offset );
 
-	// respawn/teleport or first frame: recentre the body under the head
-	if ( !haveAnchor || Distance( rd->vieworg, lastOrg ) > 64.0f ) {
-		VectorCopy( vr.hmdposition, anchor );
-		haveAnchor = qtrue;
+	if ( cls.framecount - lastGameFrame > 2 ) {
+		playerHeight = vr.hmdposition[1];
 	}
-	VectorCopy( rd->vieworg, lastOrg );
+	lastGameFrame = cls.framecount;
+	offset[2] = ( vr.hmdposition[1] - playerHeight ) * scale;
+	if ( offset[2] < -40.0f ) offset[2] = -40.0f;
+	if ( offset[2] > 16.0f ) offset[2] = 16.0f;
 
-	dx = vr.hmdposition[0] - anchor[0];   // OpenXR stage: +x right, +y up, -z forward
-	dz = vr.hmdposition[2] - anchor[2];
-	len = sqrt( dx * dx + dz * dz );
-	if ( len > maxLean ) {
-		// walked away from the body: drag it along so the offset never exceeds maxLean
-		float pull = ( len - maxLean ) / len;
-		anchor[0] += dx * pull;
-		anchor[2] += dz * pull;
+	if ( Cvar_VariableIntegerValue( "vr_urtLeanCamera" ) ) {
+		if ( !haveAnchor || Distance( rd->vieworg, lastOrg ) > 64.0f ) {
+			VectorCopy( vr.hmdposition, anchor );
+			haveAnchor = qtrue;
+		}
 		dx = vr.hmdposition[0] - anchor[0];
 		dz = vr.hmdposition[2] - anchor[2];
-	}
-
-	f = -dz;	// forward in stage space
-	l = -dx;	// left in stage space
-	gameYaw = RAD2DEG( atan2( rd->viewaxis[0][1], rd->viewaxis[0][0] ) );
-	theta = DEG2RAD( gameYaw - vr.hmdorientation[YAW] );
-
-	offset[0] = ( f * cos( theta ) - l * sin( theta ) ) * scale;
-	offset[1] = ( f * sin( theta ) + l * cos( theta ) ) * scale;
-	// Height, as in QuakeQuest: the game's own eye height is kept and only real crouching or
-	// standing up moves the camera. The player's height is taken each time play starts
-	// (first game frame, or after a menu).
-	{
-		static float playerHeight;
-		static int lastGameFrame = -10;
-		if ( cls.framecount - lastGameFrame > 2 ) {
-			playerHeight = vr.hmdposition[1];
+		len = sqrt( dx * dx + dz * dz );
+		if ( len > maxLean ) {
+			float pull = ( len - maxLean ) / len;
+			anchor[0] += dx * pull;
+			anchor[2] += dz * pull;
+			dx = vr.hmdposition[0] - anchor[0];
+			dz = vr.hmdposition[2] - anchor[2];
 		}
-		lastGameFrame = cls.framecount;
-		offset[2] = ( vr.hmdposition[1] - playerHeight ) * scale;
-		if ( offset[2] < -40.0f ) offset[2] = -40.0f;
-		if ( offset[2] > 16.0f ) offset[2] = 16.0f;
+		f = -dz;
+		l = -dx;
+		gameYaw = RAD2DEG( atan2( rd->viewaxis[0][1], rd->viewaxis[0][0] ) );
+		theta = DEG2RAD( gameYaw - vr.hmdorientation[YAW] );
+		offset[0] = ( f * cos( theta ) - l * sin( theta ) ) * scale;
+		offset[1] = ( f * sin( theta ) + l * cos( theta ) ) * scale;
+	} else {
+		haveAnchor = qfalse;
 	}
+	VectorCopy( rd->vieworg, lastOrg );
 
 	VectorAdd( rd->vieworg, offset, end );
 	CM_BoxTrace( &tr, rd->vieworg, end, mins, maxs, 0, CONTENTS_SOLID, qfalse );

@@ -155,9 +155,11 @@ engine_t* VR_Init( ovrJava java )
 void VR_InitCvars( void )
 {
 	Cvar_Get ("skip_ioq3_credits", "0.0", CVAR_ARCHIVE);
-	vr_worldscale = Cvar_Get ("vr_worldscale", "32.0", CVAR_ARCHIVE);
+	// QuakeQuest puts Quake's eye (46 units above the floor) at 1.75 m (26.2467 units/m);
+	// the same for Urban Terror's eye (60 units) gives 34.3 units/m
+	vr_worldscale = Cvar_Get ("vr_worldscale", "34.3", CVAR_ARCHIVE);
 	vr_worldscaleScaler = Cvar_Get ("vr_worldscaleScaler", "1.0", CVAR_ARCHIVE);
-	Cvar_Get ("vr_urtHeadTracking", "1", CVAR_ARCHIVE); // camera follows head position (UrT)
+	Cvar_Get ("vr_urtLeanCamera", "0", CVAR_ARCHIVE); // 0 = head movement moves the player (QuakeQuest), 1 = camera slides
 	Cvar_Get ("vr_urtControllerAim", "1", CVAR_ARCHIVE); // aim with the dominant controller (UrT)
 	Cvar_Get ("vr_urtLaser", "1", CVAR_ARCHIVE); // laser sight from the hand
 	Cvar_Get ("vr_urtShowArms", "0", CVAR_ARCHIVE); // draw UrT's first-person arms in VR

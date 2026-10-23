@@ -459,6 +459,18 @@ void VR_DrawFrame( engine_t* engine ) {
     // that: the headset's asymmetry is mirrored, so the average is symmetric.
     qboolean screenLayer = VR_useScreenLayer() ? qtrue : qfalse;
 
+    // Stereo separation from the runtime's eye poses, as QuakeQuest's VR_GetIPD does,
+    // instead of a fixed 64 mm (r_stereoSeparation is in millimetres)
+    {
+        const XrVector3f *l = &projections[0].pose.position;
+        const XrVector3f *r = &projections[1].pose.position;
+        float dx = r->x - l->x, dy = r->y - l->y, dz = r->z - l->z;
+        float ipd = sqrtf(dx * dx + dy * dy + dz * dz);
+        if (ipd > 0.02f && ipd < 0.1f && fabsf(ipd * 1000.0f - Cvar_VariableValue("r_stereoSeparation")) > 0.5f) {
+            Cvar_SetValue("r_stereoSeparation", ipd * 1000.0f);
+        }
+    }
+
     // Each eye has its own asymmetric frustum: more field of view outward than nasally. Keep
     // them separate for rendering, and take their union for anything that has to cover both.
     XrFovf eyeFov[ovrMaxNumEyes];
