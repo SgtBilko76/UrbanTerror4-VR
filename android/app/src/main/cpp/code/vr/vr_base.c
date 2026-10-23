@@ -160,6 +160,8 @@ void VR_InitCvars( void )
 	Cvar_Get ("vr_urtHeadTracking", "1", CVAR_ARCHIVE); // camera follows head position (UrT)
 	Cvar_Get ("vr_urtControllerAim", "1", CVAR_ARCHIVE); // aim with the dominant controller (UrT)
 	Cvar_Get ("vr_urtLaser", "1", CVAR_ARCHIVE); // laser sight from the hand
+	Cvar_Get ("vr_urtRealHeight", "1", CVAR_ARCHIVE); // camera height = real head height (UrT)
+	Cvar_Get ("vr_urtEyeHeight", "62", CVAR_ARCHIVE); // UrT standing eye height above the floor (units)
 	// where UrT's view model has its grip, relative to the eye (game units): moved onto the controller
 	Cvar_Get ("vr_urtGunForward", "18", CVAR_ARCHIVE);
 	Cvar_Get ("vr_urtGunLeft", "-8", CVAR_ARCHIVE);

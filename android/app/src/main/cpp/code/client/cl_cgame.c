@@ -463,7 +463,15 @@ static void CL_VRHeadOffset( refdef_t *rd ) {
 
 	offset[0] = ( f * cos( theta ) - l * sin( theta ) ) * scale;
 	offset[1] = ( f * sin( theta ) + l * cos( theta ) ) * scale;
-	offset[2] = 0;	// UrT's own viewheight/crouch handles height
+	// Height: UrT puts a standing player's eye vr_urtEyeHeight units (62) above the floor,
+	// about 1.95 m at worldscale 32, which feels like floating. Use the real head height
+	// instead, relative to that; the game's own crouch/jump still apply on top.
+	offset[2] = 0;
+	if ( Cvar_VariableIntegerValue( "vr_urtRealHeight" ) ) {
+		offset[2] = vr.hmdposition[1] * scale - Cvar_VariableValue( "vr_urtEyeHeight" );
+		if ( offset[2] < -48.0f ) offset[2] = -48.0f;
+		if ( offset[2] > 8.0f ) offset[2] = 8.0f;
+	}
 
 	VectorAdd( rd->vieworg, offset, end );
 	CM_BoxTrace( &tr, rd->vieworg, end, mins, maxs, 0, CONTENTS_SOLID, qfalse );
