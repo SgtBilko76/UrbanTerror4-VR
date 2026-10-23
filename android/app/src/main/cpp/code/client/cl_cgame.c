@@ -628,6 +628,12 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 	for ( i = 0; i < vrNumFpEnts; i++ ) {
 		refEntity_t *e = &vrFpEnts[i];
 		vec3_t a0, a1, a2, o;
+		if ( !Cvar_VariableIntegerValue( "vr_urtShowArms" ) &&
+				Distance( e->origin, in->vieworg ) < Cvar_VariableValue( "vr_urtArmsCutoff" ) ) {
+			// UrT's arms model starts at the eye. Moved into the hand, its shoulder end sweeps
+			// through the player's face, so only the weapon is shown (as in QuakeQuest).
+			continue;
+		}
 		CL_VRTransformAxis( e->axis[0], gAxis, hAxis, a0 );
 		CL_VRTransformAxis( e->axis[1], gAxis, hAxis, a1 );
 		CL_VRTransformAxis( e->axis[2], gAxis, hAxis, a2 );
