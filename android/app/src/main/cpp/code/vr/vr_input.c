@@ -98,6 +98,7 @@ float degrees(float rad) {
 #endif
 
 extern cvar_t *vr_righthanded;
+extern int vr_extBDController;
 extern cvar_t *vr_switchThumbsticks;
 extern cvar_t *vr_snapturn;
 extern cvar_t *vr_thumbstickPressThreshold;
@@ -750,6 +751,22 @@ void IN_VRInit( void )
         suggestedBindings.countSuggestedBindings = currBinding;
         OXR(xrSuggestInteractionProfileBindings(engine->appState.Instance, &suggestedBindings));
 
+        // PICO 4 / Neo 3 controllers (XR_BD_controller_interaction) have the Touch layout and the
+        // same input paths; suggest the Touch bindings for them too and let the runtime pick.
+        if (vr_extBDController && interactionProfilePath == interactionProfilePathTouch) {
+            const char* picoProfiles[] = {
+                    "/interaction_profiles/bytedance/pico4_controller",
+                    "/interaction_profiles/bytedance/pico_neo3_controller"};
+            for (int p = 0; p < 2; p++) {
+                XrPath picoPath = XR_NULL_PATH;
+                if (xrStringToPath(engine->appState.Instance, picoProfiles[p], &picoPath) == XR_SUCCESS) {
+                    suggestedBindings.interactionProfile = picoPath;
+                    XrResult picoResult = xrSuggestInteractionProfileBindings(engine->appState.Instance, &suggestedBindings);
+                    ALOGV("PICO bindings %s: %d", picoProfiles[p], picoResult);
+                }
+            }
+        }
+
         // Enumerate actions
         XrPath actionPathsBuffer[32];
         char stringBuffer[256];
@@ -1085,8 +1102,10 @@ static void IN_VRJoystick( qboolean isRightController, float joystickX, float jo
             else
             {
 				//Positional movement speed correction for when we are not hitting target framerate
-				float refresh;
-				VR_GetEngine()->appState.pfnGetDisplayRefreshRate(VR_GetEngine()->appState.Session, &refresh);
+				float refresh = 72.0f;
+				if (VR_GetEngine()->appState.pfnGetDisplayRefreshRate)
+					VR_GetEngine()->appState.pfnGetDisplayRefreshRate(VR_GetEngine()->appState.Session, &refresh);
+				if (refresh < 1.0f) refresh = 72.0f;
 				float multiplier = (float)((1000.0 / refresh) / (in_vrEventTime - lastframetime));
 
 				float factor = (refresh / 72.0F) * 10.0f; // adjust positional factor based on refresh rate
@@ -1390,7 +1409,7 @@ void IN_VRInputFrame( void )
 	// and, on a headset that cannot reach the requested rate (the original Quest tops out at 72),
 	// produced an OpenXR error every single frame.
 	static int requestedRefreshRate = 0;
-	if (vr_refreshrate != NULL && vr_refreshrate->integer &&
+	if (vr_refreshrate != NULL && vr_refreshrate->integer && engine->appState.pfnRequestDisplayRefreshRate &&
 		vr_refreshrate->integer != requestedRefreshRate) {
 		requestedRefreshRate = vr_refreshrate->integer;
         OXR(engine->appState.pfnRequestDisplayRefreshRate(engine->appState.Session, (float)requestedRefreshRate));

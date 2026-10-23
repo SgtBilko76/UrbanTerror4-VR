@@ -908,6 +908,9 @@ intptr_t CL_UISystemCalls( intptr_t *args ) {
 		return Key_IsDown( args[1] );
 
 	case UI_KEY_GETOVERSTRIKEMODE:
+		// the menu code asks this every frame while a text field is being edited (it picks the
+		// caret shape): the VR keyboard shows while these calls keep coming
+		{ extern int cl_vrKbdEditTime; cl_vrKbdEditTime = cls.realtime; }
 		return Key_GetOverstrikeMode();
 
 	case UI_KEY_SETOVERSTRIKEMODE:

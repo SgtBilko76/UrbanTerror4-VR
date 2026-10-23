@@ -18,6 +18,9 @@ Copyright : Copyright (c) Facebook Technologies, LLC and its affiliates. All rig
 #include <sys/prctl.h>
 #include <assert.h>
 
+extern int vr_extPerfSettings;
+extern int vr_extThreadSettings;
+
 typedef void(GL_APIENTRY* PFNGLFRAMEBUFFERTEXTUREMULTIVIEWOVRPROC)(
         GLenum target,
         GLenum attachment,
@@ -280,7 +283,7 @@ void ovrApp_HandleSessionStateChanges(ovrApp* app, XrSessionState state) {
         app->SessionActive = (result == XR_SUCCESS);
 
         // Set session state once we have entered VR mode and have a valid session object.
-        if (app->SessionActive) {
+        if (app->SessionActive && vr_extPerfSettings) {
             XrPerfSettingsLevelEXT cpuPerfLevel = XR_PERF_SETTINGS_LEVEL_BOOST_EXT;
             XrPerfSettingsLevelEXT gpuPerfLevel = XR_PERF_SETTINGS_LEVEL_BOOST_EXT;
 
@@ -295,6 +298,8 @@ void ovrApp_HandleSessionStateChanges(ovrApp* app, XrSessionState state) {
             OXR(pfnPerfSettingsSetPerformanceLevelEXT(
                     app->Session, XR_PERF_SETTINGS_DOMAIN_GPU_EXT, gpuPerfLevel));
 
+        }
+        if (app->SessionActive && vr_extThreadSettings) {
             PFN_xrSetAndroidApplicationThreadKHR pfnSetAndroidApplicationThreadKHR = NULL;
             OXR(xrGetInstanceProcAddr(
                     app->Instance,

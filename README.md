@@ -1,3 +1,62 @@
+# UrbanTerror4-VR
+
+[Urban Terror 4.3](https://www.urbanterror.info/) as a standalone 6DoF VR game for **Meta Quest**
+(tested on Quest 3) and **PICO 4 / Neo 3** (same APK, **not tested on PICO hardware yet**). Based on
+Team Beef's [ioq3quest](https://github.com/Team-Beef-Studios/ioq3quest) (ioquake3 with OpenXR), with
+the VR integration modelled on [QuakeQuest](https://github.com/Team-Beef-Studios/QuakeQuest).
+This is the `urt` branch.
+
+Urban Terror is a free multiplayer tactical shooter by **FrozenSand**. Its game data is **not** in
+this repository or the APK: on the first start the app downloads Urban Terror 4.3.4 from FrozenSand's
+official server (1.4 GB, size and MD5 checked) and installs it to `/sdcard/UrTQuest/q3ut4`.
+
+## Features
+- Head tracking, real eye height, aim and shoot with the right controller (laser + 3D crosshair).
+- Hands: the right hand holds the gun, the left arm follows the left controller.
+- HUD as a panel that follows your view; menus on a curved screen with a laser pointer.
+- Virtual keyboard for text fields (player name, passwords), opened by clicking the field.
+- Online play: the server browser uses Urban Terror's master servers (servers that require an
+  Urban Terror account login are not supported yet).
+- Offline games with bots from the main menu.
+
+## Controls
+| Button | Action |
+|---|---|
+| Right trigger | Fire |
+| Right grip | Reload |
+| Right stick up / down | Next / previous weapon |
+| Right stick left / right | Snap turn |
+| Right stick click | Bandage |
+| B / A | Jump / crouch |
+| X | Fire mode |
+| Y (hold) | Scoreboard |
+| Left trigger | Use: doors, defuse, pick up |
+| Left stick | Move; click and hold = sprint |
+| Left grip | Steady the weapon |
+| Menus | Point with the right controller, trigger = click |
+
+## Install
+1. Install `UrbanTerror4-VR-v<version>.apk` from the [releases](../../releases) (SideQuest or
+   `adb install -r UrbanTerror4-VR-v<version>.apk`).
+2. Start it from the library (Unknown Sources), allow file access.
+3. On the first start press **I agree - download and install** and wait (about 3 GB free space needed
+   while installing). Already have Urban Terror 4.3? Copy its `q3ut4` folder to `/sdcard/UrTQuest/q3ut4`
+   instead.
+
+Your player name starts as `QuestPlayer`: change it in the game's player setup. Clicking a text
+field with the laser opens a virtual keyboard.
+
+## Building
+See the ioq3quest instructions below; the app ID is `com.bilko.urtquest`.
+
+    make -j release ANDROID_SDK_ROOT=<sdk>
+    cd android && ./gradlew assembleRelease -PskipEngineBuild=true
+
+## Credits and licences
+- Engine: ioquake3 and Team Beef's ioq3quest (GPL-2.0), VR changes in this branch (GPL-2.0).
+- Urban Terror © FrozenSand Games Limited; downloaded from FrozenSand, not redistributed here.
+- Quake III Arena engine source © id Software (GPL-2.0).
+
 # Quake 3 Port to Oculus Quest
 
 ## Building

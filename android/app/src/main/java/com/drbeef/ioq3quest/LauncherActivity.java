@@ -2,6 +2,7 @@ package com.drbeef.ioq3quest;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.PendingIntent;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.net.Uri;
@@ -86,9 +87,45 @@ public class LauncherActivity extends Activity {
 
 	private void launchGame() {
 		launched = true;
+		// No Urban Terror data yet: the 2D setup panel downloads it from FrozenSand, then starts
+		// the game itself.
+		boolean installed = new UrtInstaller(DownloadActivity.BASE_DIR).isInstalled();
+		if (!installed) {
+			openSetupPanel();
+			return;
+		}
 		Intent intent = new Intent(this, MainActivity.class);
 		intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
 		startActivity(intent);
+		finish();
+	}
+
+	/**
+	 * Horizon OS closes a 2D panel that an immersive app starts directly (this activity is the
+	 * VR launcher). It only shows panels opened from Home, so launch Home and hand it the setup
+	 * panel as a pending intent. PICO has no such extra: there the panel is started directly.
+	 */
+	private void openSetupPanel() {
+		Intent panel = new Intent(getApplicationContext(), DownloadActivity.class)
+				.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+		String maker = (Build.MANUFACTURER + " " + Build.BRAND).toLowerCase();
+		if (maker.contains("pico") || maker.contains("bytedance")) {
+			startActivity(panel);
+			finish();
+			return;
+		}
+		PendingIntent pending = PendingIntent.getActivity(getApplicationContext(), 0, panel,
+				PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+		Intent home = new Intent(Intent.ACTION_MAIN)
+				.addCategory(Intent.CATEGORY_HOME)
+				.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+				.putExtra("extra_launch_in_home_pending_intent", pending);
+		try {
+			startActivity(home);
+		} catch (Exception e) {
+			Log.w(TAG, "Home hand-off failed, starting the setup panel directly: " + e);
+			startActivity(panel);
+		}
 		finish();
 	}
 

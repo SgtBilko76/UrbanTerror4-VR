@@ -1365,6 +1365,12 @@ Called by the system for both key up and key down events
 ===================
 */
 void CL_KeyEvent (int key, qboolean down, unsigned time) {
+	{
+		extern qboolean CL_VRKeyboardKey( int key, qboolean down );
+		if ( CL_VRKeyboardKey( key, down ) ) {
+			return;	// a click on the VR keyboard
+		}
+	}
 	if( down )
 		CL_KeyDownEvent( key, time );
 	else

@@ -490,6 +490,214 @@ void SCR_Init( void ) {
 
 //=======================================================
 
+
+/*
+=================================================================================
+
+VR virtual keyboard
+
+Quest/PICO have no keyboard. While Urban Terror's menu edits a text field (player name, chat,
+server password...) a keyboard is drawn on the lower part of the menu screen; the laser
+pointer clicks its keys, which are sent to the menu as typed characters.
+
+=================================================================================
+*/
+int vr_menuPointerX = -1, vr_menuPointerY = -1, vr_menuPointerTime;
+int cl_vrKbdEditTime;
+
+#define KBD_X 20.0f
+#define KBD_Y 274.0f
+#define KBD_W 600.0f
+#define KBD_ROWH 36.0f
+#define KBD_GAP 3.0f
+#define KBD_ROWS 5
+
+enum { KK_CHAR, KK_SHIFT, KK_SPACE, KK_BACK, KK_DONE };
+typedef struct { int type; char lower, upper; float units; } kbdKey_t;
+
+static const char *kbdRows[4][2] = {
+	{ "1234567890-", "!@#$%^&*()_" },
+	{ "qwertyuiop", "QWERTYUIOP" },
+	{ "asdfghjkl", "ASDFGHJKL" },
+	{ "zxcvbnm.,", "ZXCVBNM?:" },
+};
+
+static qboolean kbdShift = qtrue;		// one-shot: on when the keyboard opens (capital first letter)
+static qboolean kbdWasVisible;
+static qboolean kbdSwallowUp;
+static int kbdBackHeldSince, kbdBackLastRepeat;
+static qboolean kbdBackHeld;
+static int kbdFlashKey = -1, kbdFlashTime;
+
+static qboolean CL_VRKeyboardVisible( void ) {
+	return ( Key_GetCatcher() & KEYCATCH_UI ) && !( Key_GetCatcher() & KEYCATCH_CONSOLE ) &&
+		cl_vrKbdEditTime && cls.realtime - cl_vrKbdEditTime < 300 &&
+		Cvar_VariableIntegerValue( "vr_keyboard" );
+}
+
+// key rect for index i (rows 0-3 = character rows, row 4 = Shift/Space/Back/Done); returns qfalse past the end
+static qboolean CL_VRKeyboardKeyRect( int i, int *type, char *ch, float *x, float *y, float *w, float *h ) {
+	int row, n = 0;
+	float unit = ( KBD_W - 10 * KBD_GAP ) / 11.0f;
+	for ( row = 0; row < 4; row++ ) {
+		int len = strlen( kbdRows[row][0] );
+		if ( i < n + len ) {
+			int col = i - n;
+			float rowW = len * unit + ( len - 1 ) * KBD_GAP;
+			*type = KK_CHAR;
+			*ch = kbdRows[row][kbdShift ? 1 : 0][col];
+			*x = KBD_X + ( KBD_W - rowW ) * 0.5f + col * ( unit + KBD_GAP );
+			*y = KBD_Y + row * ( KBD_ROWH + KBD_GAP );
+			*w = unit;
+			*h = KBD_ROWH;
+			return qtrue;
+		}
+		n += len;
+	}
+	{	// bottom row: Shift 2 | Space 5 | Back 2 | Done 2 (units)
+		static const int types[4] = { KK_SHIFT, KK_SPACE, KK_BACK, KK_DONE };
+		static const float units[4] = { 2, 5, 2, 2 };
+		int j = i - n, c;
+		float xx = KBD_X, avail = 11 * unit + 10 * KBD_GAP - 3 * KBD_GAP, sum = 11.0f;
+		if ( j < 0 || j > 3 ) return qfalse;
+		for ( c = 0; c < j; c++ ) xx += units[c] / sum * avail + KBD_GAP;
+		*type = types[j];
+		*ch = ' ';
+		*x = xx;
+		*y = KBD_Y + 4 * ( KBD_ROWH + KBD_GAP );
+		*w = units[j] / sum * avail;
+		*h = KBD_ROWH;
+		return qtrue;
+	}
+}
+
+static int CL_VRKeyboardHit( void ) {
+	int i, type;
+	char ch;
+	float x, y, w, h;
+	if ( vr_menuPointerX < 0 || cls.realtime - vr_menuPointerTime > 200 ) return -1;
+	for ( i = 0; CL_VRKeyboardKeyRect( i, &type, &ch, &x, &y, &w, &h ); i++ ) {
+		if ( vr_menuPointerX >= x - 1 && vr_menuPointerX < x + w + 1 &&
+				vr_menuPointerY >= y - 1 && vr_menuPointerY < y + h + 1 ) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+static qboolean CL_VRKeyboardPointerInside( void ) {
+	return vr_menuPointerX >= 0 && cls.realtime - vr_menuPointerTime <= 200 &&
+		vr_menuPointerX >= KBD_X - 6 && vr_menuPointerX <= KBD_X + KBD_W + 6 &&
+		vr_menuPointerY >= KBD_Y - 6 && vr_menuPointerY <= KBD_Y + KBD_ROWS * ( KBD_ROWH + KBD_GAP ) + 6;
+}
+
+static void CL_VRKeyboardTap( int key ) {
+	CL_KeyEvent( key, qtrue, Sys_Milliseconds() );
+	CL_KeyEvent( key, qfalse, Sys_Milliseconds() );
+}
+
+static void CL_VRKeyboardPress( int i ) {
+	extern void VR_Vibrate( int duration, int chan, float intensity );
+	extern cvar_t *vr_righthanded;
+	int type;
+	char ch;
+	float x, y, w, h;
+	if ( !CL_VRKeyboardKeyRect( i, &type, &ch, &x, &y, &w, &h ) ) return;
+	kbdFlashKey = i;
+	kbdFlashTime = cls.realtime;
+	VR_Vibrate( 15, ( vr_righthanded && vr_righthanded->integer ) ? 2 : 1, 0.5f );
+	switch ( type ) {
+	case KK_CHAR:
+		CL_CharEvent( ch );
+		kbdShift = qfalse;
+		break;
+	case KK_SPACE:
+		CL_CharEvent( ' ' );
+		break;
+	case KK_SHIFT:
+		kbdShift = !kbdShift;
+		break;
+	case KK_BACK:
+		CL_VRKeyboardTap( K_BACKSPACE );
+		kbdBackHeld = qtrue;
+		kbdBackHeldSince = kbdBackLastRepeat = cls.realtime;
+		break;
+	case KK_DONE:
+		CL_VRKeyboardTap( K_ENTER );
+		break;
+	}
+}
+
+// Called from CL_KeyEvent; qtrue = the event was a click on the keyboard and is used up.
+qboolean CL_VRKeyboardKey( int key, qboolean down ) {
+	if ( key != K_MOUSE1 ) return qfalse;
+	if ( !down ) {
+		kbdBackHeld = qfalse;
+		if ( kbdSwallowUp ) {
+			kbdSwallowUp = qfalse;
+			return qtrue;
+		}
+		return qfalse;
+	}
+	if ( !CL_VRKeyboardVisible() || !CL_VRKeyboardPointerInside() ) return qfalse;
+	{
+		int i = CL_VRKeyboardHit();
+		if ( i >= 0 ) CL_VRKeyboardPress( i );
+	}
+	kbdSwallowUp = qtrue;	// clicks in the keyboard's gaps don't reach the menu either
+	return qtrue;
+}
+
+static void CL_VRKeyboardDraw( void ) {
+	static const float panel[4] = { 0.05f, 0.07f, 0.12f, 0.92f };
+	static const float keyCol[4] = { 0.22f, 0.26f, 0.34f, 1.0f };
+	static const float keyHover[4] = { 0.30f, 0.45f, 0.75f, 1.0f };
+	static const float keyFlash[4] = { 0.95f, 0.65f, 0.20f, 1.0f };
+	static const float keyOn[4] = { 0.20f, 0.55f, 0.35f, 1.0f };
+	static const float white[4] = { 1, 1, 1, 1 };
+	int i, type, hover;
+	char ch;
+	float x, y, w, h;
+
+	if ( !CL_VRKeyboardVisible() ) {
+		kbdWasVisible = qfalse;
+		kbdBackHeld = qfalse;
+		return;
+	}
+	if ( !kbdWasVisible ) {
+		kbdWasVisible = qtrue;
+		kbdShift = qtrue;
+	}
+	// Backspace repeats while held: 450 ms delay, then every 70 ms
+	if ( kbdBackHeld && cls.realtime - kbdBackHeldSince > 450 && cls.realtime - kbdBackLastRepeat > 70 ) {
+		kbdBackLastRepeat = cls.realtime;
+		CL_VRKeyboardTap( K_BACKSPACE );
+	}
+
+	hover = CL_VRKeyboardHit();
+	SCR_FillRect( KBD_X - 8, KBD_Y - 8, KBD_W + 16, KBD_ROWS * ( KBD_ROWH + KBD_GAP ) + 13, panel );
+	for ( i = 0; CL_VRKeyboardKeyRect( i, &type, &ch, &x, &y, &w, &h ); i++ ) {
+		const float *c = keyCol;
+		const char *label;
+		char buf[2];
+		float size = 16.0f;
+		if ( type == KK_SHIFT && kbdShift ) c = keyOn;
+		if ( i == hover ) c = keyHover;
+		if ( i == kbdFlashKey && cls.realtime - kbdFlashTime < 120 ) c = keyFlash;
+		SCR_FillRect( x, y, w, h, c );
+		switch ( type ) {
+		case KK_SHIFT: label = "Shift"; break;
+		case KK_SPACE: label = "Space"; break;
+		case KK_BACK: label = "<- Del"; break;
+		case KK_DONE: label = "Done"; break;
+		default: buf[0] = ch; buf[1] = 0; label = buf; size = 20.0f; break;
+		}
+		SCR_DrawStringExt( (int)( x + ( w - strlen( label ) * size ) * 0.5f ), (int)( y + ( h - size ) * 0.5f ),
+			size, label, (float *)white, qtrue, qtrue );
+	}
+	re.SetColor( NULL );
+}
+
 /*
 ==================
 SCR_DrawScreenField
@@ -562,6 +770,7 @@ void SCR_DrawScreenField( stereoFrame_t stereoFrame ) {
 	// the menu draws next
 	if ( Key_GetCatcher( ) & KEYCATCH_UI && uivm ) {
 		VM_Call( uivm, UI_REFRESH, cls.realtime );
+		CL_VRKeyboardDraw();
 	}
 
 	// console draws next

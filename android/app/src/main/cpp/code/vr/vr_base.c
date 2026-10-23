@@ -14,12 +14,16 @@ qboolean vr_initialized = qfalse;
 qboolean vr_cylinderSupported = qfalse;
 extern vr_clientinfo_t vr;
 
+// Only these two are needed on every runtime. The rest are enabled when the runtime lists
+// them: PICO's runtime has no XR_FB_display_refresh_rate, and requiring it made
+// xrCreateInstance fail there.
 const char* const requiredExtensionNames[] = {
         XR_KHR_OPENGL_ES_ENABLE_EXTENSION_NAME,
-        XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME,
-        XR_EXT_PERFORMANCE_SETTINGS_EXTENSION_NAME,
-        XR_KHR_ANDROID_THREAD_SETTINGS_EXTENSION_NAME,
-        XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME};
+        XR_KHR_ANDROID_CREATE_INSTANCE_EXTENSION_NAME};
+int vr_extPerfSettings = 0;
+int vr_extThreadSettings = 0;
+int vr_extRefreshRate = 0;
+int vr_extBDController = 0;
 const uint32_t numRequiredExtensions =
         sizeof(requiredExtensionNames) / sizeof(requiredExtensionNames[0]);
 
@@ -115,17 +119,23 @@ engine_t* VR_Init( ovrJava java )
             for (uint32_t i = 0; i < propCount; i++) props[i].type = XR_TYPE_EXTENSION_PROPERTIES;
             if (xrEnumerateInstanceExtensionProperties(NULL, propCount, &propCount, props) == XR_SUCCESS) {
                 for (uint32_t i = 0; i < propCount; i++) {
-                    if (!strcmp(props[i].extensionName, XR_KHR_COMPOSITION_LAYER_CYLINDER_EXTENSION_NAME)) {
-                        vr_cylinderSupported = qtrue;
-                    }
+                    const char* n = props[i].extensionName;
+                    if (!strcmp(n, XR_KHR_COMPOSITION_LAYER_CYLINDER_EXTENSION_NAME)) vr_cylinderSupported = qtrue;
+                    if (!strcmp(n, XR_EXT_PERFORMANCE_SETTINGS_EXTENSION_NAME)) vr_extPerfSettings = 1;
+                    if (!strcmp(n, XR_KHR_ANDROID_THREAD_SETTINGS_EXTENSION_NAME)) vr_extThreadSettings = 1;
+                    if (!strcmp(n, XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME)) vr_extRefreshRate = 1;
+                    if (!strcmp(n, XR_BD_CONTROLLER_INTERACTION_EXTENSION_NAME)) vr_extBDController = 1;
                 }
             }
             free(props);
         }
-        if (vr_cylinderSupported) {
-            extensionNames[extensionCount++] = XR_KHR_COMPOSITION_LAYER_CYLINDER_EXTENSION_NAME;
-        }
-        ALOGV("Cylinder layer %s", vr_cylinderSupported ? "supported" : "not supported");
+        if (vr_cylinderSupported) extensionNames[extensionCount++] = XR_KHR_COMPOSITION_LAYER_CYLINDER_EXTENSION_NAME;
+        if (vr_extPerfSettings) extensionNames[extensionCount++] = XR_EXT_PERFORMANCE_SETTINGS_EXTENSION_NAME;
+        if (vr_extThreadSettings) extensionNames[extensionCount++] = XR_KHR_ANDROID_THREAD_SETTINGS_EXTENSION_NAME;
+        if (vr_extRefreshRate) extensionNames[extensionCount++] = XR_FB_DISPLAY_REFRESH_RATE_EXTENSION_NAME;
+        if (vr_extBDController) extensionNames[extensionCount++] = XR_BD_CONTROLLER_INTERACTION_EXTENSION_NAME;
+        ALOGV("OpenXR extensions: cylinder %d perf %d thread %d refresh %d bd_controller %d",
+              vr_cylinderSupported, vr_extPerfSettings, vr_extThreadSettings, vr_extRefreshRate, vr_extBDController);
     }
     instanceCreateInfo.enabledExtensionCount = extensionCount;
     instanceCreateInfo.enabledExtensionNames = extensionNames;
@@ -194,6 +204,7 @@ void VR_InitCvars( void )
 	Cvar_Get ("vr_menuCurved", "1", CVAR_ARCHIVE); // curved menu panel (cylinder layer)
 	Cvar_Get ("vr_menuRadius", "5", CVAR_ARCHIVE); // distance of the curved menu panel (metres)
 	Cvar_Get ("vr_menuLaser", "1", CVAR_ARCHIVE); // laser pointer in menus
+	Cvar_Get ("vr_keyboard", "1", CVAR_ARCHIVE); // virtual keyboard while a menu text field is edited
 	Cvar_Get ("vr_urtCrosshairSize", "2.5", CVAR_ARCHIVE); // crosshair size in degrees
 	Cvar_Get ("vr_urtArms", "1", CVAR_ARCHIVE); // UrT arms: right hand with the gun, left arm on the left controller
 	Cvar_Get ("vr_urtLeftHandForward", "0", CVAR_ARCHIVE); // left hand offset from the left controller (units)

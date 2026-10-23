@@ -9,6 +9,8 @@
 #include "vr_input.h"
 #include "vr_types.h"
 
+extern int vr_extRefreshRate;
+
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
@@ -244,8 +246,9 @@ void VR_InitRenderer( engine_t* engine ) {
     OXR(xrGetViewConfigurationProperties(
             engine->appState.Instance, engine->appState.SystemId, XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, &engine->appState.ViewportConfig));
 
-    // Get the supported display refresh rates for the system.
-    {
+    // Get the supported display refresh rates for the system (XR_FB_display_refresh_rate:
+    // Meta only; PICO runs at its own fixed rate).
+    if (vr_extRefreshRate) {
         PFN_xrEnumerateDisplayRefreshRatesFB pfnxrEnumerateDisplayRefreshRatesFB = NULL;
         OXR(xrGetInstanceProcAddr(
                 engine->appState.Instance,
@@ -476,6 +479,10 @@ static void VR_UpdateMenuPointer(engine_t* engine, const XrPosef* head, qboolean
 
         int x = (int)(Com_Clamp(0.0f, 1.0f, u) * SCREEN_WIDTH + 0.5f);
         int y = (int)(Com_Clamp(0.0f, 1.0f, v) * SCREEN_HEIGHT + 0.5f);
+        {   // for the virtual keyboard (cl_scrn.c), in 640x480 units
+            extern int vr_menuPointerX, vr_menuPointerY, vr_menuPointerTime;
+            vr_menuPointerX = x; vr_menuPointerY = y; vr_menuPointerTime = cls.realtime;
+        }
         if (vr.menuCursorX && vr.menuCursorY) {
             // a VR-aware UI hands us its cursor
             *vr.menuCursorX = x;
