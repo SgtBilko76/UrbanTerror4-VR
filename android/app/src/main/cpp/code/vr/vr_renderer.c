@@ -458,15 +458,6 @@ void VR_DrawFrame( engine_t* engine ) {
     // so it has to be rendered through a centred frustum. Averaging the two eyes gives exactly
     // that: the headset's asymmetry is mirrored, so the average is symmetric.
     qboolean screenLayer = VR_useScreenLayer() ? qtrue : qfalse;
-    {   // TEMP diagnostics: why is the flat screen layer chosen?
-        static int vrDbgLast;
-        int now = Sys_Milliseconds();
-        if (now - vrDbgLast > 3000) {
-            vrDbgLast = now;
-            Com_Printf("VRDBG screenLayer %d catcher 0x%x state %d pm_type %d pm_flags 0x%x\n",
-                       screenLayer, Key_GetCatcher(), clc.state, cl.snap.ps.pm_type, cl.snap.ps.pm_flags);
-        }
-    }
 
     // Each eye has its own asymmetric frustum: more field of view outward than nasally. Keep
     // them separate for rendering, and take their union for anything that has to cover both.

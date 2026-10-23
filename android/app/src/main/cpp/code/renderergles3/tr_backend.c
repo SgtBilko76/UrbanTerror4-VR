@@ -866,21 +866,6 @@ const void	*RB_DrawSurfs( const void *data ) {
 
 	// this view's own camera (see GLSL_SetViewMatrices)
 	GLSL_SetViewMatrices( &backEnd.viewParms );
-	{	// TEMP diagnostics: every view drawn in one frame, every ~3 s
-		static int dbgLast, dbgFrame = -1, dbgCount;
-		int now = ri.Milliseconds();
-		if ( now - dbgLast > 3000 ) { dbgLast = now; dbgFrame = tr.frameCount; dbgCount = 0; }
-		if ( dbgFrame == tr.frameCount && dbgCount < 12 ) {
-			const float *m = backEnd.viewParms.world.eyeViewMatrix[0];
-			dbgCount++;
-			ri.Printf( PRINT_ALL, "VIEWDBG f%d #%d flags 0x%x portal %d vp %d,%d %dx%d org %.1f %.1f %.1f fwd %.2f %.2f %.2f eye0 t %.1f %.1f %.1f surfs %d\n",
-				tr.frameCount, dbgCount, backEnd.viewParms.flags, backEnd.viewParms.isPortal,
-				backEnd.viewParms.viewportX, backEnd.viewParms.viewportY, backEnd.viewParms.viewportWidth, backEnd.viewParms.viewportHeight,
-				backEnd.viewParms.or.origin[0], backEnd.viewParms.or.origin[1], backEnd.viewParms.or.origin[2],
-				backEnd.viewParms.or.axis[0][0], backEnd.viewParms.or.axis[0][1], backEnd.viewParms.or.axis[0][2],
-				m[12], m[13], m[14], ((const drawSurfsCommand_t *)data)->numDrawSurfs );
-		}
-	}
 
 	isShadowView = !!(backEnd.viewParms.flags & VPF_DEPTHSHADOW);
 
