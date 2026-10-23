@@ -361,6 +361,14 @@ void VR_InitCvars( void )
 	if ( !strcmp( Cvar_VariableString( "vr_button_map_SECONDARYTRIGGER" ), "+moveup" ) ) Cvar_Set( "vr_button_map_SECONDARYTRIGGER", "+button7" );
 	if ( !Cvar_VariableString( "vr_button_map_PRIMARYTHUMBSTICK" )[0] ) Cvar_Set( "vr_button_map_PRIMARYTHUMBSTICK", "+button6" );
 	if ( !strcmp( Cvar_VariableString( "vr_button_map_SECONDARYTHUMBSTICK" ), "+scores" ) ) Cvar_Set( "vr_button_map_SECONDARYTHUMBSTICK", "+button8" );
+	// weapon switching: ioq3quest's weapon wheel (+weapon_select on the right grip) lives in its
+	// own Quake 3 cgame and does nothing in UrT, so right stick up/down = next/previous weapon
+	{
+		const char *f = Cvar_VariableString( "vr_button_map_RTHUMBFORWARD" );
+		const char *b = Cvar_VariableString( "vr_button_map_RTHUMBBACK" );
+		if ( !f[0] || !strcmp( f, "+weapon_select" ) ) Cvar_Set( "vr_button_map_RTHUMBFORWARD", "weapnext" );
+		if ( !b[0] || !strcmp( b, "+weapon_select" ) || !strcmp( b, "uturn" ) ) Cvar_Set( "vr_button_map_RTHUMBBACK", "weapprev" );
+	}
 
 	Cvar_Get ("vr_button_map_PRIMARYGRIP_ALT", "", CVAR_ARCHIVE); // unmapped
 

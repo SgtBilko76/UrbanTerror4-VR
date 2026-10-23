@@ -1280,7 +1280,7 @@ define DO_REF_STR
 $(echo_cmd) "REF_STR $<"
 $(Q)rm -f $@
 $(Q)echo "const char *fallbackShader_$(notdir $(basename $<)) =" >> $@
-$(Q)cat $< | sed -e 's/^\(.*\)$$/\"\1\"/' >> $@
+$(Q)cat $< | tr -d '\r' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/^\(.*\)$$/\"\1\\n\"/' >> $@
 $(Q)echo ";" >> $@
 endef
 

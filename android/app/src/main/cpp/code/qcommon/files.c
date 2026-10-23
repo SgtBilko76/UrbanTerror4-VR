@@ -340,9 +340,20 @@ qboolean FS_Initialized( void ) {
 FS_PakIsPure
 =================
 */
+// pakQ3Q.pk3 holds the Quest engine's own files (GLSL shaders, scripts/vr.shader for the VR
+// HUD/crosshair/laser, a few gfx). A pure server doesn't know it, but the engine needs it, so it
+// stays readable on pure servers and is never reported as a referenced pak (that would get
+// the client kicked as unpure).
+static qboolean FS_IsEnginePak( const pack_t *pack ) {
+	return pack && !Q_stricmp( pack->pakBasename, "pakQ3Q" );
+}
+
 qboolean FS_PakIsPure( pack_t *pack ) {
 	int i;
 
+	if ( FS_IsEnginePak( pack ) ) {
+		return qtrue;
+	}
 	if ( fs_numServerPaks ) {
 		for ( i = 0 ; i < fs_numServerPaks ; i++ ) {
 			// FIXME: also use hashed file names
@@ -1261,7 +1272,7 @@ long FS_FOpenFileReadDir(const char *filename, searchpath_t *search, fileHandle_
 					// from every pk3 file.. 
 					len = strlen(filename);
 
-					if (!(pak->referenced & FS_GENERAL_REF))
+					if (!(pak->referenced & FS_GENERAL_REF) && !FS_IsEnginePak( pak ))
 					{
 						if(!FS_IsExt(filename, ".shader", len) &&
 						   !FS_IsExt(filename, ".txt", len) &&
