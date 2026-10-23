@@ -631,22 +631,6 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 	} else {
 		VectorCopy( aim, aimEye );
 	}
-	{	// TEMP diagnostics: aim we send vs. the angles the server reports back
-		static int adbgLast;
-		int now = Sys_Milliseconds();
-		if ( now - adbgLast > 2000 ) {
-			adbgLast = now;
-			Com_Printf( "AIMDBG corr %.2f eye pitch %.2f yaw %.2f | server ps pitch %.2f yaw %.2f | delta p %.2f y %.2f | sent cmd p %.2f | hand pitch %.2f | eye %.1f %.1f %.1f srv eye %.1f %.1f %.1f | hit %.1f %.1f %.1f dist %.0f\n",
-				cl_vrAimPitchCorr, AngleNormalize180( aimEye[PITCH] ), AngleNormalize180( aimEye[YAW] ),
-				AngleNormalize180( cl.snap.ps.viewangles[PITCH] ), AngleNormalize180( cl.snap.ps.viewangles[YAW] ),
-				SHORT2ANGLE( cl.snap.ps.delta_angles[PITCH] ), SHORT2ANGLE( cl.snap.ps.delta_angles[YAW] ),
-				AngleNormalize180( SHORT2ANGLE( cl.cmds[cl.cmdNumber & CMD_MASK].angles[PITCH] ) ),
-				AngleNormalize180( aim[PITCH] ),
-				in->vieworg[0], in->vieworg[1], in->vieworg[2],
-				cl.snap.ps.origin[0], cl.snap.ps.origin[1], cl.snap.ps.origin[2] + cl.snap.ps.viewheight,
-				tr.endpos[0], tr.endpos[1], tr.endpos[2], Distance( tr.endpos, in->vieworg ) );
-		}
-	}
 	CL_VRMeasurePitchCorrection();
 	cl_vrAimYawDelta = AngleNormalize180( aimEye[YAW] - headYaw );
 	cl_vrAimPitch = AngleNormalize180( aimEye[PITCH] );
@@ -726,7 +710,6 @@ buffer is shown as a sprite floating in front of the player that smoothly follow
 ====================
 */
 static qboolean cl_vrHudBuffer;
-static int cl_vrHudPics, cl_vrHudModels, cl_vrHudStarts;
 
 static qboolean CL_VRHudEnabled( void ) {
 	int status = Cvar_VariableIntegerValue( "vr_hudDrawStatus" );
@@ -946,7 +929,6 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 				CL_VRHudScale( &x, &y, &w, &h );
 				rd.x = x; rd.y = y; rd.width = w; rd.height = h;
 				rd.isHUD = qtrue;
-				cl_vrHudModels++;
 			}
 			// model-only scene (HUD/menu models): draw held entities where the game put them
 			int i;
@@ -978,7 +960,6 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 			// everything the cgame draws in 2D from here on is its HUD
 			re.HUDBufferStart( qtrue );
 			cl_vrHudBuffer = qtrue;
-			cl_vrHudStarts++;
 		}
 		return 0;
 	}
@@ -989,7 +970,6 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		float x = VMF(1), y = VMF(2), w = VMF(3), h = VMF(4);
 		if ( cl_vrHudBuffer ) {
 			CL_VRHudScale( &x, &y, &w, &h );
-			cl_vrHudPics++;
 		}
 		re.DrawStretchPic( x, y, w, h, VMF(5), VMF(6), VMF(7), VMF(8), args[9] );
 		return 0;
@@ -1234,17 +1214,6 @@ void CL_CGameRendering( stereoFrame_t stereo ) {
 	if ( cl_vrHudBuffer ) {
 		re.HUDBufferEnd();
 		cl_vrHudBuffer = qfalse;
-	}
-	{	// TEMP diagnostics: HUD redirection
-		static int hdbgLast;
-		int now = Sys_Milliseconds();
-		if ( now - hdbgLast > 2000 ) {
-			hdbgLast = now;
-			Com_Printf( "HUDDBG enabled %d status %d aim %d zoom %d starts %d pics(last frame) %d models %d vid %dx%d\n",
-				CL_VRHudEnabled(), Cvar_VariableIntegerValue( "vr_hudDrawStatus" ), CL_VRAimEnabled(), vr.weapon_zoomed,
-				cl_vrHudStarts, cl_vrHudPics, cl_vrHudModels, cls.glconfig.vidWidth, cls.glconfig.vidHeight );
-		}
-		cl_vrHudPics = cl_vrHudModels = 0;
 	}
 	VM_Debug( 0 );
 }
