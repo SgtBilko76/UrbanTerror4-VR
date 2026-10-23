@@ -673,6 +673,35 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 	}
 }
 
+// TEMP diagnostics: models drawn near the player's own eye
+static refEntity_t vrDbgEnts[48];
+static int vrDbgNum;
+static vec3_t vrDbgLastEye;
+static void CL_VRDebugCollect( const refEntity_t *e ) {
+	if ( e->reType == RT_MODEL && vrDbgNum < 48 && Distance( e->origin, vrDbgLastEye ) < 96.0f ) {
+		vrDbgEnts[vrDbgNum++] = *e;
+	}
+}
+static void CL_VRDebugDump( const legacyRefdef_t *in ) {
+	static int last;
+	int i, now = Sys_Milliseconds();
+	if ( now - last > 3000 ) {
+		last = now;
+		Com_Printf( "ENTDBG eye %.1f %.1f %.1f fwd %.2f %.2f %.2f ps.origin %.1f %.1f %.1f n %d\n",
+			in->vieworg[0], in->vieworg[1], in->vieworg[2], in->viewaxis[0][0], in->viewaxis[0][1], in->viewaxis[0][2],
+			cl.snap.ps.origin[0], cl.snap.ps.origin[1], cl.snap.ps.origin[2], vrDbgNum );
+		for ( i = 0; i < vrDbgNum; i++ ) {
+			const refEntity_t *e = &vrDbgEnts[i];
+			Com_Printf( "ENTDBG  model %d skin %d cshader %d fx 0x%x rel %.1f %.1f %.1f light %.1f %.1f %.1f\n",
+				e->hModel, e->customSkin, e->customShader, e->renderfx,
+				e->origin[0] - in->vieworg[0], e->origin[1] - in->vieworg[1], e->origin[2] - in->vieworg[2],
+				e->lightingOrigin[0] - in->vieworg[0], e->lightingOrigin[1] - in->vieworg[1], e->lightingOrigin[2] - in->vieworg[2] );
+		}
+	}
+	VectorCopy( in->vieworg, vrDbgLastEye );
+	vrDbgNum = 0;
+}
+
 intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	switch( args[0] ) {
 	case CG_PRINT:
@@ -815,6 +844,7 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_R_ADDREFENTITYTOSCENE: {
 		refEntity_t ent;
 		CL_RefEntityFromLegacy( VMA(1), &ent );
+		CL_VRDebugCollect( &ent );
 		if ( ( ent.renderfx & RF_FIRST_PERSON ) && CL_VRAimEnabled() ) {
 			CL_VRHoldEntity( &ent );
 			return 0;
@@ -847,6 +877,7 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 			}
 			vrNumFpEnts = 0;
 		} else {
+			CL_VRDebugDump( VMA(1) );
 			CL_VRApplyView( VMA(1), &rd );
 			{	// TEMP diagnostics: camera height above the floor
 				static int dbgLast;

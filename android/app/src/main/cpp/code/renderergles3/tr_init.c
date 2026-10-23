@@ -1310,6 +1310,10 @@ void R_Register( void )
 	ri.Cvar_CheckRange( r_znear, 0.001f, 200, qfalse );
 	r_zproj = ri.Cvar_Get( "r_zproj", "64", CVAR_ARCHIVE );
 	r_stereoSeparation = ri.Cvar_Get( "r_stereoSeparation", "64", CVAR_ARCHIVE );
+	{
+		extern cvar_t *r_vrWorldModelIdentity;
+		r_vrWorldModelIdentity = ri.Cvar_Get( "r_vrWorldModelIdentity", "1", 0 );
+	}
 	r_useFlush = ri.Cvar_Get( "r_useFlush", "1", CVAR_ARCHIVE );
 	r_ignoreGLErrors = ri.Cvar_Get( "r_ignoreGLErrors", "1", CVAR_ARCHIVE );
 	r_fastsky = ri.Cvar_Get( "r_fastsky", "0", CVAR_ARCHIVE );

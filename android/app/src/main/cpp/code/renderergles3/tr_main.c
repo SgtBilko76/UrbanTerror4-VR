@@ -40,6 +40,7 @@ static float	s_flipMatrix[16] = {
 
 extern cvar_t *vr_worldscale;
 extern cvar_t *vr_worldscaleScaler;
+cvar_t *r_vrWorldModelIdentity;
 
 refimport_t	ri;
 
@@ -621,7 +622,14 @@ void R_RotateForViewer (void)
 		else
 		{
 			//World Model View
-			Mat4Copy(viewerMatrix, tr.or.modelMatrix);
+			// The shaders already apply the per-eye view (u_ViewMatrices = eyeViewMatrix, which contains
+			// the camera origin and axes). Putting the viewer transform into the world model matrix too
+			// applied it twice, moving the camera away from the player in proportion to its distance
+			// from the map origin. r_vrWorldModelIdentity 0 restores the old behaviour.
+			if (r_vrWorldModelIdentity->integer)
+				Mat4Identity(tr.or.modelMatrix);
+			else
+				Mat4Copy(viewerMatrix, tr.or.modelMatrix);
 			myGlMultMatrix(viewerMatrix, s_flipMatrix, tr.or.modelView);
 		}
 	}
