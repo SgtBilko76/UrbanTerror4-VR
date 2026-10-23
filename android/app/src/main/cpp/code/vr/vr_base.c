@@ -327,8 +327,8 @@ void VR_InitCvars( void )
 		Cvar_Get ("vr_button_map_X", "+moveup", CVAR_ARCHIVE); // Jump
 		Cvar_Get ("vr_button_map_Y", "+movedown", CVAR_ARCHIVE); // Crouch
 	} else {
-		Cvar_Get ("vr_button_map_A", "+moveup", CVAR_ARCHIVE); // Jump
-		Cvar_Get ("vr_button_map_B", "+movedown", CVAR_ARCHIVE); // Crouch
+		Cvar_Get ("vr_button_map_A", "+movedown", CVAR_ARCHIVE); // Crouch
+		Cvar_Get ("vr_button_map_B", "+moveup", CVAR_ARCHIVE); // Jump (B, the user prefers it)
 		Cvar_Get ("vr_button_map_X", "+button3", CVAR_ARCHIVE); // Fire mode (UrT)
 		Cvar_Get ("vr_button_map_Y", "+button5", CVAR_ARCHIVE); // Reload (UrT)
 	}
@@ -361,6 +361,13 @@ void VR_InitCvars( void )
 	if ( !strcmp( Cvar_VariableString( "vr_button_map_SECONDARYTRIGGER" ), "+moveup" ) ) Cvar_Set( "vr_button_map_SECONDARYTRIGGER", "+button7" );
 	if ( !Cvar_VariableString( "vr_button_map_PRIMARYTHUMBSTICK" )[0] ) Cvar_Set( "vr_button_map_PRIMARYTHUMBSTICK", "+button6" );
 	if ( !strcmp( Cvar_VariableString( "vr_button_map_SECONDARYTHUMBSTICK" ), "+scores" ) ) Cvar_Set( "vr_button_map_SECONDARYTHUMBSTICK", "+button8" );
+	// B = jump, A = crouch (swapped from ioq3quest; saved configs with the old layout migrate)
+	if ( !Cvar_VariableIntegerValue( "vr_switchThumbsticks" ) &&
+			!strcmp( Cvar_VariableString( "vr_button_map_A" ), "+moveup" ) &&
+			!strcmp( Cvar_VariableString( "vr_button_map_B" ), "+movedown" ) ) {
+		Cvar_Set( "vr_button_map_A", "+movedown" );
+		Cvar_Set( "vr_button_map_B", "+moveup" );
+	}
 	// weapon switching: ioq3quest's weapon wheel (+weapon_select on the right grip) lives in its
 	// own Quake 3 cgame and does nothing in UrT, so right stick up/down = next/previous weapon
 	{
