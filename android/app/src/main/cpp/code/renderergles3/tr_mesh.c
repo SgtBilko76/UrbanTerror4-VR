@@ -396,6 +396,14 @@ void R_AddMD3Surfaces( trRefEntity_t *ent ) {
 			shader = tr.shaders[ surface->shaderIndexes[ ent->e.skinNum % surface->numShaderIndexes ] ];
 		}
 
+		if ( ent->e.vrHandSide ) {
+			qboolean left = strstr( surface->name, "handleft" ) != NULL;
+			if ( ( ent->e.vrHandSide == 1 ) != left ) {
+				surface++;
+				continue;
+			}
+		}
+
 		// we will add shadows even if the main object isn't visible in the view
 
 		// stencil shadows can't do personal models unless I polyhedron clip

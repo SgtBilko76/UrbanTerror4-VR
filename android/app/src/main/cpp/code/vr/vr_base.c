@@ -162,8 +162,16 @@ void VR_InitCvars( void )
 	Cvar_Get ("vr_urtLeanCamera", "0", CVAR_ARCHIVE); // 0 = head movement moves the player (QuakeQuest), 1 = camera slides
 	Cvar_Get ("vr_urtControllerAim", "1", CVAR_ARCHIVE); // aim with the dominant controller (UrT)
 	Cvar_Get ("vr_urtLaser", "1", CVAR_ARCHIVE); // laser sight from the hand
-	Cvar_Get ("vr_urtShowArms", "0", CVAR_ARCHIVE); // draw UrT's first-person arms in VR
-	Cvar_Get ("vr_urtGunScale", "0.55", CVAR_ARCHIVE); // size of the gun in the hand (UrT view model is flat-screen sized)
+	Cvar_Get ("vr_urtCrosshair", "1", CVAR_ARCHIVE); // 3D crosshair where the hand aims
+	Cvar_Get ("vr_urtCrosshairSize", "2.5", CVAR_ARCHIVE); // crosshair size in degrees
+	Cvar_Get ("vr_urtArms", "1", CVAR_ARCHIVE); // UrT arms: right hand with the gun, left arm on the left controller
+	Cvar_Get ("vr_urtLeftHandForward", "0", CVAR_ARCHIVE); // left hand offset from the left controller (units)
+	Cvar_Get ("vr_urtLeftHandLeft", "0", CVAR_ARCHIVE);
+	Cvar_Get ("vr_urtLeftHandUp", "0", CVAR_ARCHIVE);
+	Cvar_Get ("vr_urtLeftArmPitch", "0", CVAR_ARCHIVE); // left arm rotation in the controller frame (degrees)
+	Cvar_Get ("vr_urtLeftArmYaw", "0", CVAR_ARCHIVE);
+	Cvar_Get ("vr_urtLeftArmRoll", "0", CVAR_ARCHIVE);
+	Cvar_Get ("vr_urtGunScale", "0.4", CVAR_ARCHIVE); // size of the gun in the hand (UrT view model is flat-screen sized)
 	Cvar_Get ("vr_urtArmsCutoff", "16", CVAR_ARCHIVE); // first-person models closer to the eye than this are the arms
 	Cvar_Get ("vr_urtRealHeight", "1", CVAR_ARCHIVE); // camera height = real head height (UrT)
 	Cvar_Get ("vr_urtEyeHeight", "62", CVAR_ARCHIVE); // UrT standing eye height above the floor (units)

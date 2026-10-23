@@ -51,6 +51,7 @@ static ID_INLINE void CL_RefdefFromLegacy( const legacyRefdef_t *in, refdef_t *o
 static ID_INLINE void CL_RefEntityFromLegacy( const void *in, refEntity_t *out ) {
 	Com_Memcpy( out, in, LEGACY_REFENTITY_SIZE );
 	out->invert = qfalse;
+	out->vrHandSide = 0;
 }
 
 

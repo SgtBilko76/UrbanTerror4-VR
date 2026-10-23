@@ -11,3 +11,15 @@ sprites/vr/hud
 		blendfunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA
 	}
 }
+// 3D crosshair placed where the hand aims (UrT, engine side). White cross, coloured per entity.
+sprites/vr/crosshair
+{
+	nopicmip
+	cull disable
+	{
+		map gfx/crosshairs/static/cross.tga
+		blendfunc GL_SRC_ALPHA GL_ONE_MINUS_SRC_ALPHA
+		rgbGen entity
+		alphaGen entity
+	}
+}

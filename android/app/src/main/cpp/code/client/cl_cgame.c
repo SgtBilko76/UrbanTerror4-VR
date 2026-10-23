@@ -534,6 +534,159 @@ static void CL_VRMeasurePitchCorrection( void ) {
 }
 
 #define MAX_VR_FP_ENTS 64
+
+// names of the cgame's models by handle (to find UrT's "*_hold" arms model)
+#define MAX_VR_MODEL_NAMES 1024
+static char vrModelNames[MAX_VR_MODEL_NAMES][MAX_QPATH];
+
+/*
+UrT's first-person arms are one model per weapon ("<weapon>_hold.md3") with a surface per
+hand (h_handleft*, h_handright*). In VR the right hand stays with the gun and the left arm is
+drawn a second time at the left controller. The pivot is the left hand: the front-most
+vertices of the h_handleft surface, per animation frame, read from the MD3 file.
+*/
+#define MAX_VR_HOLD_MODELS 32
+typedef struct {
+	char	name[MAX_QPATH];
+	int		numFrames;
+	vec3_t	*pivot;		// per frame, model space; NULL if the model has no left hand
+	vec3_t	*elbow;		// per frame: back end of the left forearm
+} vrHoldModel_t;
+static vrHoldModel_t vrHoldModels[MAX_VR_HOLD_MODELS];
+static int vrNumHoldModels;
+
+static const vrHoldModel_t *CL_VRHoldModel( const char *name ) {
+	vrHoldModel_t *hm;
+	union { void *v; byte *b; } buf;
+	int i, len;
+
+	for ( i = 0; i < vrNumHoldModels; i++ ) {
+		if ( !Q_stricmp( vrHoldModels[i].name, name ) ) return &vrHoldModels[i];
+	}
+	if ( vrNumHoldModels >= MAX_VR_HOLD_MODELS ) return NULL;
+	hm = &vrHoldModels[vrNumHoldModels++];
+	Com_Memset( hm, 0, sizeof( *hm ) );
+	Q_strncpyz( hm->name, name, sizeof( hm->name ) );
+
+	len = FS_ReadFile( name, &buf.v );
+	if ( len >= 108 && !memcmp( buf.b, "IDP3", 4 ) ) {
+		int numFrames = LittleLong( *(int *)( buf.b + 76 ) );
+		int numSurfs = LittleLong( *(int *)( buf.b + 84 ) );
+		int ofs = LittleLong( *(int *)( buf.b + 100 ) );
+		int s;
+		for ( s = 0; s < numSurfs && ofs > 0 && ofs + 108 <= len; s++ ) {
+			const byte *sf = buf.b + ofs;
+			char sname[65];
+			int sFrames = LittleLong( *(int *)( sf + 72 ) );
+			int numVerts = LittleLong( *(int *)( sf + 80 ) );
+			int ofsXyz = LittleLong( *(int *)( sf + 100 ) );
+			int ofsEnd = LittleLong( *(int *)( sf + 104 ) );
+			Com_Memcpy( sname, sf + 4, 64 ); sname[64] = 0;
+			Q_strlwr( sname );
+			if ( !strcmp( sname, "h_handleft" ) && numVerts > 0 && sFrames > 0 &&
+					ofs + ofsXyz + sFrames * numVerts * 8 <= len ) {
+				int f, v;
+				hm->numFrames = sFrames;
+				hm->pivot = Z_Malloc( sFrames * sizeof( vec3_t ) );
+				hm->elbow = Z_Malloc( sFrames * sizeof( vec3_t ) );
+				for ( f = 0; f < sFrames; f++ ) {
+					const short *xyz = (const short *)( sf + ofsXyz + f * numVerts * 8 );
+					float maxX = -99999.0f;
+					vec3_t sum = { 0, 0, 0 };
+					int n = 0;
+					for ( v = 0; v < numVerts; v++ ) {
+						float x = LittleShort( xyz[v * 4] ) / 64.0f;
+						if ( x > maxX ) maxX = x;
+					}
+					// the hand: everything within 7 units of the front-most point
+					for ( v = 0; v < numVerts; v++ ) {
+						float x = LittleShort( xyz[v * 4] ) / 64.0f;
+						if ( x > maxX - 7.0f ) {
+							sum[0] += x;
+							sum[1] += LittleShort( xyz[v * 4 + 1] ) / 64.0f;
+							sum[2] += LittleShort( xyz[v * 4 + 2] ) / 64.0f;
+							n++;
+						}
+					}
+					VectorScale( sum, 1.0f / n, hm->pivot[f] );
+					{	// elbow: the rear-most 7 units
+						float minX = 99999.0f;
+						vec3_t esum = { 0, 0, 0 };
+						int en = 0;
+						for ( v = 0; v < numVerts; v++ ) {
+							float x = LittleShort( xyz[v * 4] ) / 64.0f;
+							if ( x < minX ) minX = x;
+						}
+						for ( v = 0; v < numVerts; v++ ) {
+							float x = LittleShort( xyz[v * 4] ) / 64.0f;
+							if ( x < minX + 7.0f ) {
+								esum[0] += x;
+								esum[1] += LittleShort( xyz[v * 4 + 1] ) / 64.0f;
+								esum[2] += LittleShort( xyz[v * 4 + 2] ) / 64.0f;
+								en++;
+							}
+						}
+						VectorScale( esum, 1.0f / en, hm->elbow[f] );
+					}
+				}
+				break;
+			}
+			if ( ofsEnd <= 0 ) break;
+			ofs += ofsEnd;
+		}
+		(void)numFrames;
+	}
+	if ( len > 0 ) FS_FreeFile( buf.v );
+	Com_DPrintf( "VR arms: %s left hand pivot %s\n", name, hm->pivot ? "found" : "missing" );
+	return hm;
+}
+
+static qboolean CL_VRIsHoldModel( qhandle_t h ) {
+	return h > 0 && h < MAX_VR_MODEL_NAMES && strstr( vrModelNames[h], "_hold" ) != NULL;
+}
+
+// left arm: the model's left forearm (elbow -> hand) is laid along the left controller's
+// forward axis, the model's up as close to the controller's up as possible, the hand at the
+// controller. e = the right-hand copy (for model, frame and scale).
+static void CL_VRAddLeftArm( const refEntity_t *e, const vec3_t offOrg, vec3_t oAxis[3] ) {
+	const vrHoldModel_t *hm = CL_VRHoldModel( vrModelNames[e->hModel] );
+	refEntity_t left;
+	vec3_t p, el, fm, lm, um, zUp = { 0, 0, 1 };
+	float lerp, scale;
+	int i, f0, f1;
+
+	if ( !hm || !hm->pivot ) return;
+	f0 = e->frame; f1 = e->oldframe;
+	if ( f0 < 0 || f0 >= hm->numFrames ) f0 = 0;
+	if ( f1 < 0 || f1 >= hm->numFrames ) f1 = f0;
+	lerp = e->backlerp;
+	for ( i = 0; i < 3; i++ ) {
+		p[i] = hm->pivot[f0][i] * ( 1.0f - lerp ) + hm->pivot[f1][i] * lerp;
+		el[i] = hm->elbow[f0][i] * ( 1.0f - lerp ) + hm->elbow[f1][i] * lerp;
+	}
+	// forearm frame in model space
+	VectorSubtract( p, el, fm );
+	if ( VectorNormalize( fm ) < 0.01f ) return;
+	VectorMA( zUp, -DotProduct( zUp, fm ), fm, um );
+	if ( VectorNormalize( um ) < 0.01f ) return;
+	CrossProduct( um, fm, lm );
+	scale = VectorLength( e->axis[0] );
+
+	left = *e;
+	left.vrHandSide = 1;
+	// world image of model axis i: scale * ( fm[i] F + lm[i] L + um[i] U )
+	for ( i = 0; i < 3; i++ ) {
+		VectorScale( oAxis[0], fm[i] * scale, left.axis[i] );
+		VectorMA( left.axis[i], lm[i] * scale, oAxis[1], left.axis[i] );
+		VectorMA( left.axis[i], um[i] * scale, oAxis[2], left.axis[i] );
+	}
+	VectorCopy( offOrg, left.origin );
+	for ( i = 0; i < 3; i++ ) VectorMA( left.origin, -p[i], left.axis[i], left.origin );
+	VectorCopy( left.origin, left.oldorigin );
+	VectorCopy( offOrg, left.lightingOrigin );
+	left.nonNormalizedAxes = qtrue;
+	re.AddRefEntityToScene( &left );
+}
 static refEntity_t vrFpEnts[MAX_VR_FP_ENTS];
 static int vrNumFpEnts;
 
@@ -587,7 +740,7 @@ static void CL_VRStageToWorld( const vec3_t stage, float headYaw, vec3_t out ) {
 
 static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 	vec3_t head, aim, hand, off, fwd, end, dir, grip, gAxis[3], hAxis[3], zero = { 0, 0, 0 };
-	vec3_t aimEye;
+	vec3_t aimEye, offOrg, offAng, oAxis[3];
 	float gunScale;
 	float headYaw;
 	trace_t tr;
@@ -621,6 +774,32 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 	aim[ROLL] = vr.weaponangles[ROLL];
 	AnglesToAxis( aim, hAxis );
 
+	// left (off) hand position and orientation in the world, plus a grip offset in its frame
+	VectorSubtract( vr.offhandposition, vr.hmdposition, off );
+	CL_VRStageToWorld( off, headYaw, offOrg );
+	VectorAdd( rd->vieworg, offOrg, offOrg );
+	offAng[PITCH] = vr.offhandangles[PITCH];
+	offAng[YAW] = AngleNormalize180( vr.offhandangles[YAW] + ( headYaw - vr.hmdorientation[YAW] ) );
+	offAng[ROLL] = vr.offhandangles[ROLL];
+	AnglesToAxis( offAng, oAxis );
+	{	// turn UrT's foregrip hand pose into a controller grip (tunable, controller frame)
+		vec3_t adj, adjAxis[3], tmp[3];
+		int k;
+		adj[PITCH] = Cvar_VariableValue( "vr_urtLeftArmPitch" );
+		adj[YAW] = Cvar_VariableValue( "vr_urtLeftArmYaw" );
+		adj[ROLL] = Cvar_VariableValue( "vr_urtLeftArmRoll" );
+		AnglesToAxis( adj, adjAxis );
+		for ( k = 0; k < 3; k++ ) {
+			VectorScale( oAxis[0], adjAxis[k][0], tmp[k] );
+			VectorMA( tmp[k], adjAxis[k][1], oAxis[1], tmp[k] );
+			VectorMA( tmp[k], adjAxis[k][2], oAxis[2], tmp[k] );
+		}
+		for ( k = 0; k < 3; k++ ) VectorCopy( tmp[k], oAxis[k] );
+	}
+	VectorMA( offOrg, Cvar_VariableValue( "vr_urtLeftHandForward" ), oAxis[0], offOrg );
+	VectorMA( offOrg, Cvar_VariableValue( "vr_urtLeftHandLeft" ), oAxis[1], offOrg );
+	VectorMA( offOrg, Cvar_VariableValue( "vr_urtLeftHandUp" ), oAxis[2], offOrg );
+
 	// what the hand points at; the game shoots from the eye, so aim the eye at that point
 	VectorCopy( hAxis[0], fwd );
 	VectorMA( hand, 8192, fwd, end );
@@ -649,10 +828,14 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 	for ( i = 0; i < vrNumFpEnts; i++ ) {
 		refEntity_t *e = &vrFpEnts[i];
 		vec3_t a0, a1, a2, o;
-		if ( !Cvar_VariableIntegerValue( "vr_urtShowArms" ) &&
-				Distance( e->origin, in->vieworg ) < Cvar_VariableValue( "vr_urtArmsCutoff" ) ) {
-			// UrT's arms model starts at the eye. Moved into the hand, its shoulder end sweeps
-			// through the player's face, so only the weapon is shown (as in QuakeQuest).
+		qboolean holdModel = e->reType == RT_MODEL && CL_VRIsHoldModel( e->hModel );
+		if ( holdModel ) {
+			// UrT's arms ("*_hold"): right hand with the gun, left arm at the left controller
+			if ( !Cvar_VariableIntegerValue( "vr_urtArms" ) ) {
+				continue;
+			}
+		} else if ( Distance( e->origin, in->vieworg ) < Cvar_VariableValue( "vr_urtArmsCutoff" ) &&
+				!Cvar_VariableIntegerValue( "vr_urtArms" ) ) {
 			continue;
 		}
 		CL_VRTransformAxis( e->axis[0], gAxis, hAxis, a0 );
@@ -674,9 +857,36 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 		VectorMA( hand, gunScale, o, e->oldorigin );
 		CL_VRTransformPoint( e->lightingOrigin, in->vieworg, gAxis, grip, hand, hAxis, o );
 		VectorCopy( o, e->lightingOrigin );
+		if ( holdModel ) {
+			e->vrHandSide = 2;	// everything but the left hand
+			CL_VRAddLeftArm( e, offOrg, oAxis );
+		}
 		re.AddRefEntityToScene( e );
 	}
 	vrNumFpEnts = 0;
+
+	// 3D crosshair where the hand aims, pulled slightly back toward the hand so it is not
+	// buried in the wall; the size grows with the distance so it keeps the same angular size
+	if ( Cvar_VariableIntegerValue( "vr_urtCrosshair" ) && !vr.weapon_zoomed ) {
+		refEntity_t ch;
+		vec3_t back;
+		float dist;
+		VectorSubtract( tr.endpos, rd->vieworg, back );
+		dist = VectorNormalize( back );
+		if ( dist > 8.0f ) {
+			Com_Memset( &ch, 0, sizeof( ch ) );
+			ch.reType = RT_SPRITE;
+			ch.renderfx = RF_DEPTHHACK;
+			ch.customShader = re.RegisterShader( "sprites/vr/crosshair" );	// handles change on vid_restart
+			VectorMA( tr.endpos, -2.0f, back, ch.origin );
+			ch.radius = dist * tan( DEG2RAD( Cvar_VariableValue( "vr_urtCrosshairSize" ) * 0.5f ) );
+			ch.shaderRGBA[0] = 0xff;
+			ch.shaderRGBA[1] = 0xff;
+			ch.shaderRGBA[2] = 0xff;
+			ch.shaderRGBA[3] = 0xff;
+			re.AddRefEntityToScene( &ch );
+		}
+	}
 
 	// laser sight
 	if ( Cvar_VariableIntegerValue( "vr_urtLaser" ) ) {
@@ -881,8 +1091,13 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 	case CG_R_LOADWORLDMAP:
 		re.LoadWorld( VMA(1) );
 		return 0; 
-	case CG_R_REGISTERMODEL:
-		return re.RegisterModel( VMA(1) );
+	case CG_R_REGISTERMODEL: {
+		qhandle_t h = re.RegisterModel( VMA(1) );
+		if ( h > 0 && h < MAX_VR_MODEL_NAMES ) {
+			Q_strncpyz( vrModelNames[h], VMA(1), sizeof( vrModelNames[h] ) );
+		}
+		return h;
+	}
 	case CG_R_REGISTERSKIN:
 		return re.RegisterSkin( VMA(1) );
 	case CG_R_REGISTERSHADER:

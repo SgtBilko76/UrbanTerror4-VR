@@ -119,6 +119,10 @@ typedef struct {
 	float		radius;
 	float		rotation;
 	qboolean	invert;
+
+	// VR arms (engine side, not in the game ABI): 1 = only surfaces named *handleft*,
+	// 2 = all surfaces except *handleft*
+	int			vrHandSide;
 } refEntity_t;
 
 
