@@ -463,14 +463,19 @@ static void CL_VRHeadOffset( refdef_t *rd ) {
 
 	offset[0] = ( f * cos( theta ) - l * sin( theta ) ) * scale;
 	offset[1] = ( f * sin( theta ) + l * cos( theta ) ) * scale;
-	// Height: UrT puts a standing player's eye vr_urtEyeHeight units (62) above the floor,
-	// about 1.95 m at worldscale 32, which feels like floating. Use the real head height
-	// instead, relative to that; the game's own crouch/jump still apply on top.
-	offset[2] = 0;
-	if ( Cvar_VariableIntegerValue( "vr_urtRealHeight" ) ) {
-		offset[2] = vr.hmdposition[1] * scale - Cvar_VariableValue( "vr_urtEyeHeight" );
-		if ( offset[2] < -48.0f ) offset[2] = -48.0f;
-		if ( offset[2] > 8.0f ) offset[2] = 8.0f;
+	// Height, as in QuakeQuest: the game's own eye height is kept and only real crouching or
+	// standing up moves the camera. The player's height is taken each time play starts
+	// (first game frame, or after a menu).
+	{
+		static float playerHeight;
+		static int lastGameFrame = -10;
+		if ( cls.framecount - lastGameFrame > 2 ) {
+			playerHeight = vr.hmdposition[1];
+		}
+		lastGameFrame = cls.framecount;
+		offset[2] = ( vr.hmdposition[1] - playerHeight ) * scale;
+		if ( offset[2] < -40.0f ) offset[2] = -40.0f;
+		if ( offset[2] > 16.0f ) offset[2] = 16.0f;
 	}
 
 	VectorAdd( rd->vieworg, offset, end );
@@ -593,6 +598,20 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 		vectoangles( dir, aimEye );
 	} else {
 		VectorCopy( aim, aimEye );
+	}
+	{	// TEMP diagnostics: hand vs camera
+		static int hdbgLast, scenesThisFrame, lastFrame;
+		int now = Sys_Milliseconds();
+		if ( cls.framecount != lastFrame ) { lastFrame = cls.framecount; scenesThisFrame = 0; }
+		scenesThisFrame++;
+		if ( now - hdbgLast > 3000 || scenesThisFrame > 1 ) {
+			hdbgLast = now;
+			Com_Printf( "HANDDBG scene#%d cam %.1f %.1f %.1f hand %.1f %.1f %.1f off(m) %.2f %.2f %.2f hmd %.2f %.2f %.2f wpn %.2f %.2f %.2f hit %.1f %.1f %.1f fp %d\n",
+				scenesThisFrame, rd->vieworg[0], rd->vieworg[1], rd->vieworg[2], hand[0], hand[1], hand[2],
+				off[0], off[1], off[2], vr.hmdposition[0], vr.hmdposition[1], vr.hmdposition[2],
+				vr.weaponposition[0], vr.weaponposition[1], vr.weaponposition[2],
+				tr.endpos[0], tr.endpos[1], tr.endpos[2], vrNumFpEnts );
+		}
 	}
 	cl_vrAimYawDelta = AngleNormalize180( aimEye[YAW] - headYaw );
 	cl_vrAimPitch = AngleNormalize180( aimEye[PITCH] );

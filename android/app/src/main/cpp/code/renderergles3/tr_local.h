@@ -2256,6 +2256,7 @@ GLSL
 
 void GLSL_InitGPUShaders(void);
 void GLSL_PrepareUniformBuffers(void);
+void GLSL_SetViewMatrices( const viewParms_t *viewParms );
 void GLSL_ShutdownGPUShaders(void);
 void GLSL_VertexAttribPointers(uint32_t attribBits);
 void GLSL_BindProgram(shaderProgram_t * program);

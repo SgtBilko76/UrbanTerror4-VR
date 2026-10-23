@@ -1687,6 +1687,21 @@ void GLSL_ShutdownGPUShaders(void)
 	qglDeleteBuffers(PROJECTION_COUNT, projectionMatricesBuffer);
 }
 
+/*
+====================
+GLSL_SetViewMatrices
+
+Upload the camera of the view the backend is about to draw. GLSL_PrepareUniformBuffers only
+uploads once per frame, from whatever view was set up last in the previous frame; when a game
+module renders more than one scene per frame (Urban Terror draws 3D HUD models after the world)
+the world was drawn from the wrong camera.
+====================
+*/
+void GLSL_SetViewMatrices( const viewParms_t *viewParms )
+{
+	GLSL_ViewMatricesUniformBuffer( (const float *)viewParms->world.eyeViewMatrix, viewParms->world.modelView );
+}
+
 void GLSL_PrepareUniformBuffers(void)
 {
     int width, height;

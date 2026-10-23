@@ -864,6 +864,9 @@ const void	*RB_DrawSurfs( const void *data ) {
 	backEnd.refdef = cmd->refdef;
 	backEnd.viewParms = cmd->viewParms;
 
+	// this view's own camera (see GLSL_SetViewMatrices)
+	GLSL_SetViewMatrices( &backEnd.viewParms );
+
 	isShadowView = !!(backEnd.viewParms.flags & VPF_DEPTHSHADOW);
 
 	// clear the z buffer, set the modelview, etc
