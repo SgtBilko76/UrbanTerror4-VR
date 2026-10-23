@@ -498,6 +498,15 @@ void VR_DrawFrame( engine_t* engine ) {
             centred.angleUp    += projections[eye].fov.angleUp    / (float)ovrMaxNumEyes;
             centred.angleDown  += projections[eye].fov.angleDown  / (float)ovrMaxNumEyes;
         }
+        // Averaging makes left/right symmetric (they are mirrored between the eyes), but the
+        // vertical asymmetry is the same in both eyes and survives. The 2D overlay is moved to the
+        // optical axis (GLSL_PrepareUniformBuffers), so on Quest 3 the whole menu slid ~9% up and
+        // UrT's top menu bar fell off the panel. Make it symmetric too: the panel is a flat image.
+        {
+            float halfV = (fabsf(centred.angleUp) + fabsf(centred.angleDown)) * 0.5f;
+            centred.angleUp = halfV;
+            centred.angleDown = -halfV;
+        }
         eyeFov[0] = eyeFov[1] = centred;
         fov = centred;
     }
