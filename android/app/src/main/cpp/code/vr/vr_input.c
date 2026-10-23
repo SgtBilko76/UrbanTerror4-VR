@@ -78,6 +78,7 @@ static float triggerReleasedThreshold = 0.5f;
 
 static float thumbstickPressedThreshold = 0.6f;
 static float thumbstickReleasedThreshold = 0.2f;
+static float rightStickLatch = -1.0f;	// right stick direction kept for the current flick (-1 = none)
 
 extern cvar_t *cl_sensitivity;
 extern cvar_t *m_pitch;
@@ -1125,12 +1126,30 @@ static void IN_VRJoystick( qboolean isRightController, float joystickX, float jo
                 IN_HandleInactiveInput(&controller->axisButtons, VR_TOUCH_AXIS_DOWNLEFT, "RTHUMBBACKLEFT", joystickValue, qtrue);
                 IN_HandleInactiveInput(&controller->axisButtons, VR_TOUCH_AXIS_LEFT, "RTHUMBLEFT", joystickValue, qtrue);
                 IN_HandleInactiveInput(&controller->axisButtons, VR_TOUCH_AXIS_UPLEFT, "RTHUMBFORWARDLEFT", joystickValue, qtrue);
+                rightStickLatch = -1.0f;
             } else if (joystickValue > thumbstickPressedThreshold) {
                 float joystickAngle = AngleNormalize360(RAD2DEG(atan2(joystickX, joystickY)));
                 if (IN_VRJoystickUse8WayMapping()) {
                     IN_VRJoystickHandle8WayMapping(&controller->axisButtons, joystickAngle, joystickValue);
                 } else {
-                    IN_VRJoystickHandle4WayMapping(&controller->axisButtons, joystickAngle, joystickValue);
+                    // Snap turn (left/right) and weapon switch (up/down) share this stick. The
+                    // direction is decided once per flick and kept until the stick is back in the
+                    // centre, so a sideways flick that starts or springs back at a diagonal can't
+                    // switch the weapon. Up/down also needs a firm push within 30 degrees of the axis.
+                    if (rightStickLatch < 0.0f) {
+                        float fromUp = fabsf(AngleNormalize180(joystickAngle));
+                        float fromDown = fabsf(AngleNormalize180(joystickAngle - 180.0f));
+                        if (fromUp < 30.0f || fromDown < 30.0f) {
+                            if (joystickValue > 0.85f) {
+                                rightStickLatch = fromUp < 30.0f ? 0.0f : 180.0f;
+                            }
+                        } else if (fromUp > 45.0f && fromDown > 45.0f) {
+                            rightStickLatch = (joystickX > 0.0f) ? 90.0f : 270.0f;
+                        }
+                    }
+                    if (rightStickLatch >= 0.0f) {
+                        IN_VRJoystickHandle4WayMapping(&controller->axisButtons, rightStickLatch, joystickValue);
+                    }
                 }
             }
         }
