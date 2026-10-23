@@ -596,6 +596,20 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 	} else {
 		VectorCopy( aim, aimEye );
 	}
+	{	// TEMP diagnostics: aim we send vs. the angles the server reports back
+		static int adbgLast;
+		int now = Sys_Milliseconds();
+		if ( now - adbgLast > 2000 ) {
+			adbgLast = now;
+			Com_Printf( "AIMDBG eye pitch %.2f yaw %.2f | server ps pitch %.2f yaw %.2f | hand pitch %.2f | eye %.1f %.1f %.1f srv eye %.1f %.1f %.1f | hit %.1f %.1f %.1f dist %.0f\n",
+				AngleNormalize180( aimEye[PITCH] ), AngleNormalize180( aimEye[YAW] ),
+				AngleNormalize180( cl.snap.ps.viewangles[PITCH] ), AngleNormalize180( cl.snap.ps.viewangles[YAW] ),
+				AngleNormalize180( aim[PITCH] ),
+				in->vieworg[0], in->vieworg[1], in->vieworg[2],
+				cl.snap.ps.origin[0], cl.snap.ps.origin[1], cl.snap.ps.origin[2] + cl.snap.ps.viewheight,
+				tr.endpos[0], tr.endpos[1], tr.endpos[2], Distance( tr.endpos, in->vieworg ) );
+		}
+	}
 	cl_vrAimYawDelta = AngleNormalize180( aimEye[YAW] - headYaw );
 	cl_vrAimPitch = AngleNormalize180( aimEye[PITCH] );
 	cl_vrAimTime = cls.realtime;
@@ -663,6 +677,66 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 		laser.shaderRGBA[3] = 0x60;
 		re.AddRefEntityToScene( &laser );
 	}
+}
+
+/*
+====================
+VR HUD for Urban Terror (as ioq3quest's own cgame does it)
+
+UrT's cgame draws its HUD into the whole eye image, whose corners are outside the
+Quest's view. While playing, the 2D drawn after the world scene is sent into the
+640x480 HUD buffer instead (coordinates scaled back from the eye-buffer size), and that
+buffer is shown as a sprite floating in front of the player that smoothly follows the head.
+====================
+*/
+static qboolean cl_vrHudBuffer;
+
+static qboolean CL_VRHudEnabled( void ) {
+	int status = Cvar_VariableIntegerValue( "vr_hudDrawStatus" );
+	return CL_VRAimEnabled() && status != 0 && status != 2 && !vr.weapon_zoomed;
+}
+
+static void CL_VRHudScale( float *x, float *y, float *w, float *h ) {
+	float sx = 640.0f / (float)cls.glconfig.vidWidth;
+	float sy = 480.0f / (float)cls.glconfig.vidHeight;
+	*x *= sx; *w *= sx;
+	*y *= sy; *h *= sy;
+}
+
+static void CL_VRAddHudSprite( const refdef_t *rd ) {
+	static qhandle_t hudShader;
+	static float yawX = 0.0f, yawY = 1.0f, prevPitch = 0.0f;
+	refEntity_t ent;
+	vec3_t angles, forward, right, up, endpos;
+	float scale = Cvar_VariableValue( "vr_worldscaleScaler" );
+	float dist, radius, viewYaw;
+
+	if ( !hudShader ) {
+		hudShader = re.RegisterShader( "sprites/vr/hud" );
+	}
+	if ( scale <= 0.0f ) scale = 1.0f;
+	dist = ( Cvar_VariableValue( "vr_hudDepth" ) + 3 ) * 3 * scale;
+	radius = dist / 3.0f;
+
+	viewYaw = SHORT2ANGLE( cl.snap.ps.delta_angles[YAW] ) + ( cl.viewangles[YAW] - vr.hmdorientation[YAW] );
+	yawX = 0.95f * yawX + 0.05f * cos( DEG2RAD( vr.hmdorientation[YAW] ) );
+	yawY = 0.95f * yawY + 0.05f * sin( DEG2RAD( vr.hmdorientation[YAW] ) );
+	angles[YAW] = viewYaw + RAD2DEG( atan2( yawY, yawX ) );
+	angles[PITCH] = 0.95f * prevPitch + 0.05f * vr.hmdorientation[PITCH];
+	prevPitch = angles[PITCH];
+	angles[ROLL] = 0;
+	AngleVectors( angles, forward, right, up );
+	VectorMA( rd->vieworg, dist, forward, endpos );
+	VectorMA( endpos, Cvar_VariableValue( "vr_hudYOffset" ) / 20, up, endpos );
+
+	Com_Memset( &ent, 0, sizeof( ent ) );
+	ent.reType = RT_SPRITE;
+	ent.renderfx = RF_DEPTHHACK | RF_FIRST_PERSON;
+	VectorCopy( endpos, ent.origin );
+	ent.radius = radius;
+	ent.invert = qtrue;
+	ent.customShader = hudShader;
+	re.AddRefEntityToScene( &ent );
 }
 
 intptr_t CL_CgameSystemCalls( intptr_t *args ) {
@@ -832,6 +906,12 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		refdef_t rd;
 		CL_RefdefFromLegacy( VMA(1), &rd );
 		if ( rd.rdflags & RDF_NOWORLDMODEL ) {
+			if ( cl_vrHudBuffer ) {
+				float x = rd.x, y = rd.y, w = rd.width, h = rd.height;
+				CL_VRHudScale( &x, &y, &w, &h );
+				rd.x = x; rd.y = y; rd.width = w; rd.height = h;
+				rd.isHUD = qtrue;
+			}
 			// model-only scene (HUD/menu models): draw held entities where the game put them
 			int i;
 			for ( i = 0; i < vrNumFpEnts; i++ ) {
@@ -854,15 +934,28 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 				rd.fov_y = vr.fov_y;
 			}
 		}
+		if ( !( rd.rdflags & RDF_NOWORLDMODEL ) && CL_VRHudEnabled() ) {
+			CL_VRAddHudSprite( &rd );
+		}
 		re.RenderScene( &rd );
+		if ( !( rd.rdflags & RDF_NOWORLDMODEL ) && !cl_vrHudBuffer && CL_VRHudEnabled() ) {
+			// everything the cgame draws in 2D from here on is its HUD
+			re.HUDBufferStart( qtrue );
+			cl_vrHudBuffer = qtrue;
+		}
 		return 0;
 	}
 	case CG_R_SETCOLOR:
 		re.SetColor( VMA(1) );
 		return 0;
-	case CG_R_DRAWSTRETCHPIC:
-		re.DrawStretchPic( VMF(1), VMF(2), VMF(3), VMF(4), VMF(5), VMF(6), VMF(7), VMF(8), args[9] );
+	case CG_R_DRAWSTRETCHPIC: {
+		float x = VMF(1), y = VMF(2), w = VMF(3), h = VMF(4);
+		if ( cl_vrHudBuffer ) {
+			CL_VRHudScale( &x, &y, &w, &h );
+		}
+		re.DrawStretchPic( x, y, w, h, VMF(5), VMF(6), VMF(7), VMF(8), args[9] );
 		return 0;
+	}
 	case CG_R_MODELBOUNDS:
 		re.ModelBounds( args[1], VMA(2), VMA(3) );
 		return 0;
@@ -1100,6 +1193,10 @@ CL_CGameRendering
 */
 void CL_CGameRendering( stereoFrame_t stereo ) {
 	VM_Call( cgvm, CG_DRAW_ACTIVE_FRAME, cl.serverTime, stereo, clc.demoplaying );
+	if ( cl_vrHudBuffer ) {
+		re.HUDBufferEnd();
+		cl_vrHudBuffer = qfalse;
+	}
 	VM_Debug( 0 );
 }
 
