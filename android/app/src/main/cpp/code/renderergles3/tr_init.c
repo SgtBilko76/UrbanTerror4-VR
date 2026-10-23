@@ -261,6 +261,16 @@ static void InitOpenGL( void )
 	//		- r_gamma
 	//
 	
+#ifdef __ANDROID__
+	if ( glConfig.vidWidth != 0 )
+	{
+		// Window kept across vid_restart (see CL_ShutdownRef): the eye-buffer size may have
+		// changed (vr_superSampling), so take it from the headset again, or the game renders a
+		// smaller image than the swapchain and leaves black strips at the edges.
+		extern void VR_GetResolution( void *engine, int *pWidth, int *pHeight );
+		VR_GetResolution( NULL, &glConfig.vidWidth, &glConfig.vidHeight );
+	}
+#endif
 	if ( glConfig.vidWidth == 0 )
 	{
 		GLint		temp;

@@ -557,6 +557,7 @@ static void CL_VRStageToWorld( const vec3_t stage, float headYaw, vec3_t out ) {
 static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 	vec3_t head, aim, hand, off, fwd, end, dir, grip, gAxis[3], hAxis[3], zero = { 0, 0, 0 };
 	vec3_t aimEye;
+	float gunScale;
 	float headYaw;
 	trace_t tr;
 	int i;
@@ -608,6 +609,8 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 	for ( i = 0; i < 3; i++ ) {
 		VectorCopy( in->viewaxis[i], gAxis[i] );
 	}
+	gunScale = Cvar_VariableValue( "vr_urtGunScale" );
+	if ( gunScale <= 0.05f ) gunScale = 1.0f;
 	grip[0] = Cvar_VariableValue( "vr_urtGunForward" );
 	grip[1] = Cvar_VariableValue( "vr_urtGunLeft" );
 	grip[2] = Cvar_VariableValue( "vr_urtGunUp" );
@@ -623,13 +626,20 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 		CL_VRTransformAxis( e->axis[0], gAxis, hAxis, a0 );
 		CL_VRTransformAxis( e->axis[1], gAxis, hAxis, a1 );
 		CL_VRTransformAxis( e->axis[2], gAxis, hAxis, a2 );
-		VectorCopy( a0, e->axis[0] );
-		VectorCopy( a1, e->axis[1] );
-		VectorCopy( a2, e->axis[2] );
+		// UrT's view model is sized for a flat screen (about 1 m long in VR): shrink it around
+		// the grip, as QuakeQuest does with its weaponScale
+		VectorScale( a0, gunScale, e->axis[0] );
+		VectorScale( a1, gunScale, e->axis[1] );
+		VectorScale( a2, gunScale, e->axis[2] );
+		if ( gunScale != 1.0f ) {
+			e->nonNormalizedAxes = qtrue;
+		}
 		CL_VRTransformPoint( e->origin, in->vieworg, gAxis, grip, hand, hAxis, o );
-		VectorCopy( o, e->origin );
+		VectorSubtract( o, hand, o );
+		VectorMA( hand, gunScale, o, e->origin );
 		CL_VRTransformPoint( e->oldorigin, in->vieworg, gAxis, grip, hand, hAxis, o );
-		VectorCopy( o, e->oldorigin );
+		VectorSubtract( o, hand, o );
+		VectorMA( hand, gunScale, o, e->oldorigin );
 		CL_VRTransformPoint( e->lightingOrigin, in->vieworg, gAxis, grip, hand, hAxis, o );
 		VectorCopy( o, e->lightingOrigin );
 		re.AddRefEntityToScene( e );
