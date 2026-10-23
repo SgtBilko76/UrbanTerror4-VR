@@ -589,7 +589,7 @@ CL_FinishMove
 void rotateAboutOrigin(float x, float y, float rotation, vec2_t out);
 extern qboolean cl_vrAimActive;
 extern int cl_vrAimTime;
-extern float cl_vrAimYawDelta, cl_vrAimPitch;
+extern float cl_vrAimYawDelta, cl_vrAimPitch, cl_vrAimPitchCorr;
 void CL_FinishMove( usercmd_t *cmd ) {
 	int		i;
 
@@ -648,7 +648,8 @@ void CL_FinishMove( usercmd_t *cmd ) {
 			float f = cmd->forwardmove, r = cmd->rightmove, nf, nr;
 			cmd->angles[YAW] = ANGLE2SHORT( cl.viewangles[YAW] + cl_vrAimYawDelta );
 			// the game adds delta_angles to what we send, so take it back out
-			cmd->angles[PITCH] = ANGLE2SHORT( cl_vrAimPitch - SHORT2ANGLE( cl.snap.ps.delta_angles[PITCH] ) );
+			// ... and the pitch UrT's server adds itself (measured, see CL_VRMeasurePitchCorrection)
+			cmd->angles[PITCH] = ANGLE2SHORT( cl_vrAimPitch - SHORT2ANGLE( cl.snap.ps.delta_angles[PITCH] ) - cl_vrAimPitchCorr );
 			cmd->angles[ROLL] = 0;
 			nf = f * cos( d ) + r * sin( d );
 			nr = r * cos( d ) - f * sin( d );

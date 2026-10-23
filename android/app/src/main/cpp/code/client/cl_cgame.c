@@ -497,6 +497,41 @@ qboolean cl_vrAimActive;		// read by CL_FinishMove
 int cl_vrAimTime;
 float cl_vrAimYawDelta;		// aim yaw minus head yaw (degrees)
 float cl_vrAimPitch;		// absolute aim pitch
+float cl_vrAimPitchCorr;	// pitch the server adds on top of what we send (UrT: about 11 degrees)
+
+/*
+Urban Terror's server adds a pitch offset to the commanded view angles. Measure it from the
+last snapshot: the angle the server reports vs. the command it processed (serverTime ==
+ps.commandTime) plus delta_angles. Not while firing, so recoil does not leak in.
+*/
+static void CL_VRMeasurePitchCorrection( void ) {
+	static int lastSnap, lastFire;
+	int i;
+	if ( cl.snap.serverTime == lastSnap || !cl.snap.valid ) {
+		return;
+	}
+	lastSnap = cl.snap.serverTime;
+	for ( i = 0; i < 4; i++ ) {
+		if ( cl.cmds[( cl.cmdNumber - i ) & CMD_MASK].buttons & BUTTON_ATTACK ) {
+			lastFire = cls.realtime;
+		}
+	}
+	if ( cls.realtime - lastFire < 600 ) {
+		return;
+	}
+	for ( i = 0; i < CMD_BACKUP - 1; i++ ) {
+		const usercmd_t *c = &cl.cmds[( cl.cmdNumber - i ) & CMD_MASK];
+		if ( c->serverTime == cl.snap.ps.commandTime ) {
+			float sent = AngleNormalize180( SHORT2ANGLE( c->angles[PITCH] ) + SHORT2ANGLE( cl.snap.ps.delta_angles[PITCH] ) );
+			float got = AngleNormalize180( cl.snap.ps.viewangles[PITCH] );
+			float err = AngleNormalize180( got - sent );
+			if ( fabs( sent ) < 70.0f && fabs( err ) < 30.0f ) {
+				cl_vrAimPitchCorr = 0.8f * cl_vrAimPitchCorr + 0.2f * err;
+			}
+			return;
+		}
+	}
+}
 
 #define MAX_VR_FP_ENTS 64
 static refEntity_t vrFpEnts[MAX_VR_FP_ENTS];
@@ -601,15 +636,18 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 		int now = Sys_Milliseconds();
 		if ( now - adbgLast > 2000 ) {
 			adbgLast = now;
-			Com_Printf( "AIMDBG eye pitch %.2f yaw %.2f | server ps pitch %.2f yaw %.2f | hand pitch %.2f | eye %.1f %.1f %.1f srv eye %.1f %.1f %.1f | hit %.1f %.1f %.1f dist %.0f\n",
-				AngleNormalize180( aimEye[PITCH] ), AngleNormalize180( aimEye[YAW] ),
+			Com_Printf( "AIMDBG corr %.2f eye pitch %.2f yaw %.2f | server ps pitch %.2f yaw %.2f | delta p %.2f y %.2f | sent cmd p %.2f | hand pitch %.2f | eye %.1f %.1f %.1f srv eye %.1f %.1f %.1f | hit %.1f %.1f %.1f dist %.0f\n",
+				cl_vrAimPitchCorr, AngleNormalize180( aimEye[PITCH] ), AngleNormalize180( aimEye[YAW] ),
 				AngleNormalize180( cl.snap.ps.viewangles[PITCH] ), AngleNormalize180( cl.snap.ps.viewangles[YAW] ),
+				SHORT2ANGLE( cl.snap.ps.delta_angles[PITCH] ), SHORT2ANGLE( cl.snap.ps.delta_angles[YAW] ),
+				AngleNormalize180( SHORT2ANGLE( cl.cmds[cl.cmdNumber & CMD_MASK].angles[PITCH] ) ),
 				AngleNormalize180( aim[PITCH] ),
 				in->vieworg[0], in->vieworg[1], in->vieworg[2],
 				cl.snap.ps.origin[0], cl.snap.ps.origin[1], cl.snap.ps.origin[2] + cl.snap.ps.viewheight,
 				tr.endpos[0], tr.endpos[1], tr.endpos[2], Distance( tr.endpos, in->vieworg ) );
 		}
 	}
+	CL_VRMeasurePitchCorrection();
 	cl_vrAimYawDelta = AngleNormalize180( aimEye[YAW] - headYaw );
 	cl_vrAimPitch = AngleNormalize180( aimEye[PITCH] );
 	cl_vrAimTime = cls.realtime;
@@ -658,12 +696,10 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 
 	// laser sight
 	if ( Cvar_VariableIntegerValue( "vr_urtLaser" ) ) {
-		static qhandle_t laserShader;
+		qhandle_t laserShader;
 		refEntity_t laser;
-		if ( !laserShader ) {
-			laserShader = re.RegisterShader( "railCore" );
-			if ( !laserShader ) laserShader = cls.whiteShader;
-		}
+		laserShader = re.RegisterShader( "railCore" );	// handles change on vid_restart
+		if ( !laserShader ) laserShader = cls.whiteShader;
 		Com_Memset( &laser, 0, sizeof( laser ) );
 		laser.reType = RT_LASERSIGHT;
 		laser.customShader = laserShader;
@@ -690,6 +726,7 @@ buffer is shown as a sprite floating in front of the player that smoothly follow
 ====================
 */
 static qboolean cl_vrHudBuffer;
+static int cl_vrHudPics, cl_vrHudModels, cl_vrHudStarts;
 
 static qboolean CL_VRHudEnabled( void ) {
 	int status = Cvar_VariableIntegerValue( "vr_hudDrawStatus" );
@@ -704,16 +741,14 @@ static void CL_VRHudScale( float *x, float *y, float *w, float *h ) {
 }
 
 static void CL_VRAddHudSprite( const refdef_t *rd ) {
-	static qhandle_t hudShader;
+	qhandle_t hudShader;
 	static float yawX = 0.0f, yawY = 1.0f, prevPitch = 0.0f;
 	refEntity_t ent;
 	vec3_t angles, forward, right, up, endpos;
 	float scale = Cvar_VariableValue( "vr_worldscaleScaler" );
 	float dist, radius, viewYaw;
 
-	if ( !hudShader ) {
-		hudShader = re.RegisterShader( "sprites/vr/hud" );
-	}
+	hudShader = re.RegisterShader( "sprites/vr/hud" );	// handles change on vid_restart
 	if ( scale <= 0.0f ) scale = 1.0f;
 	dist = ( Cvar_VariableValue( "vr_hudDepth" ) + 3 ) * 3 * scale;
 	radius = dist / 3.0f;
@@ -911,6 +946,7 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 				CL_VRHudScale( &x, &y, &w, &h );
 				rd.x = x; rd.y = y; rd.width = w; rd.height = h;
 				rd.isHUD = qtrue;
+				cl_vrHudModels++;
 			}
 			// model-only scene (HUD/menu models): draw held entities where the game put them
 			int i;
@@ -942,6 +978,7 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 			// everything the cgame draws in 2D from here on is its HUD
 			re.HUDBufferStart( qtrue );
 			cl_vrHudBuffer = qtrue;
+			cl_vrHudStarts++;
 		}
 		return 0;
 	}
@@ -952,6 +989,7 @@ intptr_t CL_CgameSystemCalls( intptr_t *args ) {
 		float x = VMF(1), y = VMF(2), w = VMF(3), h = VMF(4);
 		if ( cl_vrHudBuffer ) {
 			CL_VRHudScale( &x, &y, &w, &h );
+			cl_vrHudPics++;
 		}
 		re.DrawStretchPic( x, y, w, h, VMF(5), VMF(6), VMF(7), VMF(8), args[9] );
 		return 0;
@@ -1196,6 +1234,17 @@ void CL_CGameRendering( stereoFrame_t stereo ) {
 	if ( cl_vrHudBuffer ) {
 		re.HUDBufferEnd();
 		cl_vrHudBuffer = qfalse;
+	}
+	{	// TEMP diagnostics: HUD redirection
+		static int hdbgLast;
+		int now = Sys_Milliseconds();
+		if ( now - hdbgLast > 2000 ) {
+			hdbgLast = now;
+			Com_Printf( "HUDDBG enabled %d status %d aim %d zoom %d starts %d pics(last frame) %d models %d vid %dx%d\n",
+				CL_VRHudEnabled(), Cvar_VariableIntegerValue( "vr_hudDrawStatus" ), CL_VRAimEnabled(), vr.weapon_zoomed,
+				cl_vrHudStarts, cl_vrHudPics, cl_vrHudModels, cls.glconfig.vidWidth, cls.glconfig.vidHeight );
+		}
+		cl_vrHudPics = cl_vrHudModels = 0;
 	}
 	VM_Debug( 0 );
 }
