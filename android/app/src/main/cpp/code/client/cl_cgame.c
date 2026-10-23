@@ -944,7 +944,8 @@ static void CL_VRAddHudSprite( const refdef_t *rd ) {
 	hudShader = re.RegisterShader( "sprites/vr/hud" );	// handles change on vid_restart
 	if ( scale <= 0.0f ) scale = 1.0f;
 	dist = ( Cvar_VariableValue( "vr_hudDepth" ) + 3 ) * 3 * scale;
-	radius = dist / 3.0f;
+	// vr_urtHudScale > 1 makes the HUD picture wider, so UrT's corner elements sit further out
+	radius = dist / 3.0f * ( Cvar_VariableValue( "vr_urtHudScale" ) > 0.2f ? Cvar_VariableValue( "vr_urtHudScale" ) : 1.0f );
 
 	viewYaw = SHORT2ANGLE( cl.snap.ps.delta_angles[YAW] ) + ( cl.viewangles[YAW] - vr.hmdorientation[YAW] );
 	yawX = 0.95f * yawX + 0.05f * cos( DEG2RAD( vr.hmdorientation[YAW] ) );

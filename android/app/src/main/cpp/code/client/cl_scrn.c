@@ -512,7 +512,7 @@ int cl_vrKbdEditTime;
 #define KBD_GAP 3.0f
 #define KBD_ROWS 5
 
-enum { KK_CHAR, KK_SHIFT, KK_SPACE, KK_BACK, KK_DONE };
+enum { KK_CHAR, KK_SHIFT, KK_SPACE, KK_CLEAR, KK_BACK, KK_DONE };
 typedef struct { int type; char lower, upper; float units; } kbdKey_t;
 
 static const char *kbdRows[4][2] = {
@@ -554,12 +554,12 @@ static qboolean CL_VRKeyboardKeyRect( int i, int *type, char *ch, float *x, floa
 		}
 		n += len;
 	}
-	{	// bottom row: Shift 2 | Space 5 | Back 2 | Done 2 (units)
-		static const int types[4] = { KK_SHIFT, KK_SPACE, KK_BACK, KK_DONE };
-		static const float units[4] = { 2, 5, 2, 2 };
+	{	// bottom row: Shift 2 | Space 4 | Clear 2 | Del 2 | Done 2 (units)
+		static const int types[5] = { KK_SHIFT, KK_SPACE, KK_CLEAR, KK_BACK, KK_DONE };
+		static const float units[5] = { 2, 4, 2, 2, 2 };
 		int j = i - n, c;
-		float xx = KBD_X, avail = 11 * unit + 10 * KBD_GAP - 3 * KBD_GAP, sum = 11.0f;
-		if ( j < 0 || j > 3 ) return qfalse;
+		float xx = KBD_X, avail = 11 * unit + 10 * KBD_GAP - 4 * KBD_GAP, sum = 12.0f;
+		if ( j < 0 || j > 4 ) return qfalse;
 		for ( c = 0; c < j; c++ ) xx += units[c] / sum * avail + KBD_GAP;
 		*type = types[j];
 		*ch = ' ';
@@ -617,8 +617,16 @@ static void CL_VRKeyboardPress( int i ) {
 	case KK_SHIFT:
 		kbdShift = !kbdShift;
 		break;
+	case KK_CLEAR: {	// caret to the end (End key), then delete everything (UrT fields are at most ~64 chars)
+		int n;
+		CL_VRKeyboardTap( K_END );
+		for ( n = 0; n < 80; n++ ) CL_CharEvent( 8 );
+		kbdShift = qtrue;
+		break;
+	}
 	case KK_BACK:
-		CL_VRKeyboardTap( K_BACKSPACE );
+		// the menu's text field deletes on the character Ctrl-H (8), not on the Backspace key
+		CL_CharEvent( 8 );
 		kbdBackHeld = qtrue;
 		kbdBackHeldSince = kbdBackLastRepeat = cls.realtime;
 		break;
@@ -671,7 +679,7 @@ static void CL_VRKeyboardDraw( void ) {
 	// Backspace repeats while held: 450 ms delay, then every 70 ms
 	if ( kbdBackHeld && cls.realtime - kbdBackHeldSince > 450 && cls.realtime - kbdBackLastRepeat > 70 ) {
 		kbdBackLastRepeat = cls.realtime;
-		CL_VRKeyboardTap( K_BACKSPACE );
+		CL_CharEvent( 8 );
 	}
 
 	hover = CL_VRKeyboardHit();
@@ -688,6 +696,7 @@ static void CL_VRKeyboardDraw( void ) {
 		switch ( type ) {
 		case KK_SHIFT: label = "Shift"; break;
 		case KK_SPACE: label = "Space"; break;
+		case KK_CLEAR: label = "Clear"; break;
 		case KK_BACK: label = "<- Del"; break;
 		case KK_DONE: label = "Done"; break;
 		default: buf[0] = ch; buf[1] = 0; label = buf; size = 20.0f; break;

@@ -205,6 +205,7 @@ void VR_InitCvars( void )
 	Cvar_Get ("vr_menuRadius", "5", CVAR_ARCHIVE); // distance of the curved menu panel (metres)
 	Cvar_Get ("vr_menuLaser", "1", CVAR_ARCHIVE); // laser pointer in menus
 	Cvar_Get ("vr_keyboard", "1", CVAR_ARCHIVE); // virtual keyboard while a menu text field is edited
+	Cvar_Get ("vr_urtHudScale", "1.3", CVAR_ARCHIVE); // HUD size: bigger = HUD elements further out
 	Cvar_Get ("vr_urtCrosshairSize", "2.5", CVAR_ARCHIVE); // crosshair size in degrees
 	Cvar_Get ("vr_urtArms", "1", CVAR_ARCHIVE); // UrT arms: right hand with the gun, left arm on the left controller
 	Cvar_Get ("vr_urtLeftHandForward", "0", CVAR_ARCHIVE); // left hand offset from the left controller (units)
