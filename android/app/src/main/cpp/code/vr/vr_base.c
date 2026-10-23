@@ -323,15 +323,20 @@ void VR_InitCvars( void )
 	qboolean switchThumbsticks = Cvar_VariableValue( "vr_switchThumbsticks" ) != 0;
 	if (switchThumbsticks) {
 		Cvar_Get ("vr_button_map_A", "+button2", CVAR_ARCHIVE); // Use Item
-		Cvar_Get ("vr_button_map_B", "+button3", CVAR_ARCHIVE); // Gesture
+		Cvar_Get ("vr_button_map_B", "+button5", CVAR_ARCHIVE); // Reload (UrT)
 		Cvar_Get ("vr_button_map_X", "+moveup", CVAR_ARCHIVE); // Jump
 		Cvar_Get ("vr_button_map_Y", "+movedown", CVAR_ARCHIVE); // Crouch
 	} else {
 		Cvar_Get ("vr_button_map_A", "+moveup", CVAR_ARCHIVE); // Jump
 		Cvar_Get ("vr_button_map_B", "+movedown", CVAR_ARCHIVE); // Crouch
 		Cvar_Get ("vr_button_map_X", "+button2", CVAR_ARCHIVE); // Use Item
-		Cvar_Get ("vr_button_map_Y", "+button3", CVAR_ARCHIVE); // Gesture
+		Cvar_Get ("vr_button_map_Y", "+button5", CVAR_ARCHIVE); // Reload (UrT)
 	}
+
+	// Urban Terror: +button3 is Quake 3's gesture and does nothing; the face button that had it
+	// reloads (+button5, UrT's "R"). Migrates configs saved by earlier builds.
+	if ( !strcmp( Cvar_VariableString( "vr_button_map_Y" ), "+button3" ) ) Cvar_Set( "vr_button_map_Y", "+button5" );
+	if ( !strcmp( Cvar_VariableString( "vr_button_map_B" ), "+button3" ) ) Cvar_Set( "vr_button_map_B", "+button5" );
 
 	//Remaining button mapping (buttons not affected by schemas)
 	Cvar_Get ("vr_button_map_A_ALT", "", CVAR_ARCHIVE); // unmapped
