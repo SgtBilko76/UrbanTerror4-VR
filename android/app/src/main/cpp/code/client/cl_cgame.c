@@ -775,6 +775,7 @@ static void CL_VRStageToWorld( const vec3_t stage, float headYaw, vec3_t out ) {
 // projection instead (vr_renderer.c, VR_ZoomAngle): zoom = tan(cg_fov/2) / tan(fov_x/2).
 float vr_urtZoom = 1.0f;
 int vr_urtZoomTime;
+static qboolean cl_vrScopeView;	// zoomed: the camera looks along the gun, not the head
 static float vrZoomPressFov;	// fov_x when vr_zoom was pressed, 0 = no check pending
 static int vrZoomPressTime;
 static float vrZoomLastFov = 90.0f;
@@ -953,6 +954,16 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 		VectorCopy( aim, aimEye );
 	}
 	CL_VRMeasurePitchCorrection();
+	// Scoped: look through the scope, i.e. along the line the shot takes (eye -> aim point), so
+	// the view and UrT's scope overlay follow the hand. Roll stays level.
+	cl_vrScopeView = vr_urtZoom > 1.01f && Cvar_VariableIntegerValue( "vr_urtScopeFollowsHand" );
+	if ( cl_vrScopeView ) {
+		vec3_t sa;
+		sa[PITCH] = aimEye[PITCH];
+		sa[YAW] = aimEye[YAW];
+		sa[ROLL] = 0;
+		AnglesToAxis( sa, rd->viewaxis );
+	}
 	cl_vrAimYawDelta = AngleNormalize180( aimEye[YAW] - headYaw );
 	cl_vrAimPitch = AngleNormalize180( aimEye[PITCH] );
 	cl_vrAimTime = cls.realtime;
@@ -1114,7 +1125,7 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 
 	// 3D crosshair where the hand aims, pulled slightly back toward the hand so it is not
 	// buried in the wall; the size grows with the distance so it keeps the same angular size
-	if ( Cvar_VariableIntegerValue( "vr_urtCrosshair" ) && !vr.weapon_zoomed ) {
+	if ( Cvar_VariableIntegerValue( "vr_urtCrosshair" ) && !vr.weapon_zoomed && !cl_vrScopeView ) {
 		refEntity_t ch;
 		vec3_t back;
 		float dist;
@@ -1136,7 +1147,7 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 	}
 
 	// laser sight
-	if ( Cvar_VariableIntegerValue( "vr_urtLaser" ) ) {
+	if ( Cvar_VariableIntegerValue( "vr_urtLaser" ) && !cl_vrScopeView ) {
 		qhandle_t laserShader;
 		refEntity_t laser;
 		laserShader = re.RegisterShader( "railCore" );	// handles change on vid_restart
@@ -1201,6 +1212,15 @@ static void CL_VRAddHudSprite( const refdef_t *rd ) {
 	angles[PITCH] = 0.95f * prevPitch + 0.05f * vr.hmdorientation[PITCH];
 	prevPitch = angles[PITCH];
 	angles[ROLL] = 0;
+	if ( cl_vrScopeView ) {
+		// scoped: the HUD (with UrT's scope overlay) sits exactly in front of the scope view, so
+		// the reticle centre is where the shot goes
+		vectoangles( rd->viewaxis[0], angles );
+		angles[ROLL] = 0;
+		yawX = cos( DEG2RAD( vr.hmdorientation[YAW] ) );
+		yawY = sin( DEG2RAD( vr.hmdorientation[YAW] ) );
+		prevPitch = vr.hmdorientation[PITCH];
+	}
 	AngleVectors( angles, forward, right, up );
 	VectorMA( rd->vieworg, dist, forward, endpos );
 	VectorMA( endpos, Cvar_VariableValue( "vr_hudYOffset" ) / 20, up, endpos );

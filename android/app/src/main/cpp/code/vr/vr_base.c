@@ -206,6 +206,7 @@ void VR_InitCvars( void )
 	Cvar_Get ("vr_menuLaser", "1", CVAR_ARCHIVE); // laser pointer in menus
 	Cvar_Get ("vr_keyboard", "1", CVAR_ARCHIVE); // virtual keyboard while a menu text field is edited
 	Cvar_Get ("vr_urtZoom", "1", CVAR_ARCHIVE); // eye projection follows the scope zoom
+	Cvar_Get ("vr_urtScopeFollowsHand", "1", CVAR_ARCHIVE); // scoped view looks along the gun
 	Cvar_Get ("vr_urtLayout", "0", CVAR_ARCHIVE); // button layout version (migrations)
 	Cvar_Get ("vr_urtUnsquash", "1", CVAR_ARCHIVE); // undo UrT's depth squash of the view weapon
 	Cvar_Get ("vr_urtAlignBarrel", "1", CVAR_ARCHIVE); // turn the gun so its barrel (tag_flash) follows the aim
