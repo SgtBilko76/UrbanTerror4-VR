@@ -12,7 +12,11 @@ official server (1.4 GB, size and MD5 checked) and installs it to `/sdcard/UrTQu
 
 ## Features
 - Head tracking, real eye height, aim and shoot with the right controller (laser + 3D crosshair).
-- Hands: the right hand holds the gun, the left arm follows the left controller.
+- Hands: the right hand holds the gun, the left hand follows the left controller or grabs the
+  gun's front grip for two-handed aiming.
+- Every weapon sits in your hand at its real size and proportions, its barrel lined up with the
+  crosshair.
+- Scope zoom that follows your hand, with the game's own scope reticle.
 - HUD as a panel that follows your view; menus on a curved screen with a laser pointer.
 - Virtual keyboard for text fields (player name, passwords), opened by clicking the field.
 - Online play: the server browser uses Urban Terror's master servers (servers that require an
@@ -26,13 +30,13 @@ official server (1.4 GB, size and MD5 checked) and installs it to `/sdcard/UrTQu
 | Right grip | Reload |
 | Right stick up / down | Next / previous weapon |
 | Right stick left / right | Snap turn |
-| Right stick click | Bandage |
+| Right stick click | Scope zoom (each press one step, then back to no zoom) |
 | B / A | Jump / crouch |
 | X | Fire mode |
-| Y (hold) | Scoreboard |
+| Y | Bandage |
 | Left trigger | Use: doors, defuse, pick up |
 | Left stick | Move; click and hold = sprint |
-| Left grip | Steady the weapon |
+| Left grip (hand near the gun) | Grab the front grip: two-handed aiming |
 | Menus | Point with the right controller, trigger = click |
 
 ## Install
