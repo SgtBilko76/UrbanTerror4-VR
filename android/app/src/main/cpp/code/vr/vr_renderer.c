@@ -756,7 +756,12 @@ static float VR_ZoomAngle( float angle, float zoomLevel ) {
 }
 
 void VR_DrawFrame( engine_t* engine ) {
-	if (vr.weapon_zoomed) {
+	extern float vr_urtZoom;
+	extern int vr_urtZoomTime;
+	if (vr_urtZoom > 1.01f && cls.realtime - vr_urtZoomTime < 250) {
+		// Urban Terror's own scope zoom (cl_cgame.c CL_VRUpdateZoom)
+		vr.weapon_zoomLevel = vr_urtZoom;
+	} else if (vr.weapon_zoomed) {
 		vr.weapon_zoomLevel += 0.05;
 		if (vr.weapon_zoomLevel > 2.5f)
 			vr.weapon_zoomLevel = 2.5f;

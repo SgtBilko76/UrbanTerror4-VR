@@ -41,6 +41,7 @@ static float	s_flipMatrix[16] = {
 extern cvar_t *vr_worldscale;
 extern cvar_t *vr_worldscaleScaler;
 cvar_t *r_vrWorldModelIdentity;
+cvar_t *r_vrHandsOnly;
 
 refimport_t	ri;
 

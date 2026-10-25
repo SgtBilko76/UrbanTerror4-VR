@@ -205,6 +205,9 @@ void VR_InitCvars( void )
 	Cvar_Get ("vr_menuRadius", "5", CVAR_ARCHIVE); // distance of the curved menu panel (metres)
 	Cvar_Get ("vr_menuLaser", "1", CVAR_ARCHIVE); // laser pointer in menus
 	Cvar_Get ("vr_keyboard", "1", CVAR_ARCHIVE); // virtual keyboard while a menu text field is edited
+	Cvar_Get ("vr_urtZoom", "1", CVAR_ARCHIVE); // eye projection follows the scope zoom
+	Cvar_Get ("vr_urtLayout", "0", CVAR_ARCHIVE); // button layout version (migrations)
+	Cvar_Get ("vr_urtUnsquash", "1", CVAR_ARCHIVE); // undo UrT's depth squash of the view weapon
 	Cvar_Get ("vr_urtHudScale", "1.3", CVAR_ARCHIVE); // HUD size: bigger = HUD elements further out
 	Cvar_Get ("vr_urtCrosshairSize", "2.5", CVAR_ARCHIVE); // crosshair size in degrees
 	Cvar_Get ("vr_urtArms", "1", CVAR_ARCHIVE); // UrT arms: right hand with the gun, left arm on the left controller
@@ -291,7 +294,7 @@ void VR_InitCvars( void )
             Cvar_Get ("vr_button_map_RTHUMBBACK", "", CVAR_ARCHIVE); // unmapped
         }
         Cvar_Get ("vr_button_map_PRIMARYGRIP", "+button5", CVAR_ARCHIVE); // Reload (UrT)
-        Cvar_Get ("vr_button_map_PRIMARYTHUMBSTICK", "+button6", CVAR_ARCHIVE); // Bandage (UrT)
+        Cvar_Get ("vr_button_map_PRIMARYTHUMBSTICK", "vr_zoom", CVAR_ARCHIVE); // Scope zoom step (UrT)
        	Cvar_Get ("vr_button_map_RTHUMBFORWARD_ALT", "", CVAR_ARCHIVE); // unmapped
        	Cvar_Get ("vr_button_map_RTHUMBRIGHT_ALT", "", CVAR_ARCHIVE); // unmapped
        	Cvar_Get ("vr_button_map_RTHUMBBACK_ALT", "", CVAR_ARCHIVE); // unmapped
@@ -323,7 +326,7 @@ void VR_InitCvars( void )
 			Cvar_Get ("vr_button_map_RTHUMBBACK", "weapprev", CVAR_ARCHIVE); // previous weapon
 		}
 		Cvar_Get ("vr_button_map_PRIMARYGRIP", "+alt", CVAR_ARCHIVE); // switch to alt layout
-		Cvar_Get ("vr_button_map_PRIMARYTHUMBSTICK", "+button6", CVAR_ARCHIVE); // Bandage (UrT)
+		Cvar_Get ("vr_button_map_PRIMARYTHUMBSTICK", "vr_zoom", CVAR_ARCHIVE); // Scope zoom step (UrT)
 		Cvar_Get ("vr_button_map_RTHUMBFORWARD_ALT", "", CVAR_ARCHIVE); // unmapped
 		Cvar_Get ("vr_button_map_RTHUMBRIGHT_ALT", "", CVAR_ARCHIVE); // unmapped
 		Cvar_Get ("vr_button_map_RTHUMBBACK_ALT", "", CVAR_ARCHIVE); // unmapped
@@ -342,7 +345,7 @@ void VR_InitCvars( void )
 		Cvar_Get ("vr_button_map_A", "+movedown", CVAR_ARCHIVE); // Crouch
 		Cvar_Get ("vr_button_map_B", "+moveup", CVAR_ARCHIVE); // Jump (B, the user prefers it)
 		Cvar_Get ("vr_button_map_X", "+button3", CVAR_ARCHIVE); // Fire mode (UrT)
-		Cvar_Get ("vr_button_map_Y", "+scores", CVAR_ARCHIVE); // Scoreboard (reload is on the right grip)
+		Cvar_Get ("vr_button_map_Y", "+button6", CVAR_ARCHIVE); // Bandage (UrT)
 	}
 
 
@@ -358,7 +361,7 @@ void VR_InitCvars( void )
 	Cvar_Get ("vr_button_map_SECONDARYTRIGGER_ALT", "", CVAR_ARCHIVE); // unmapped
 	Cvar_Get ("vr_button_map_PRIMARYTRIGGER", "+attack", CVAR_ARCHIVE); // Fire
 	Cvar_Get ("vr_button_map_PRIMARYTRIGGER_ALT", "", CVAR_ARCHIVE); // unmapped
-	Cvar_Get ("vr_button_map_SECONDARYGRIP", "+weapon_stabilise", CVAR_ARCHIVE); // Weapon stabilisation
+	Cvar_Get ("vr_button_map_SECONDARYGRIP", "+weapon_stabilise", CVAR_ARCHIVE); // Grab the front grip: two-handed aiming
 	Cvar_Get ("vr_button_map_SECONDARYGRIP_ALT", "", CVAR_ARCHIVE); // unmapped
 
 	// Urban Terror: +button5 = reload ("R"), +button3 = weapon fire mode. Quake 3's +button2
@@ -371,7 +374,7 @@ void VR_InitCvars( void )
 	// left trigger = interact (+button7), right stick click = bandage (+button6), left stick
 	// click = sprint (+button8); the old second jump / unused / scoreboard bindings migrate
 	if ( !strcmp( Cvar_VariableString( "vr_button_map_SECONDARYTRIGGER" ), "+moveup" ) ) Cvar_Set( "vr_button_map_SECONDARYTRIGGER", "+button7" );
-	if ( !Cvar_VariableString( "vr_button_map_PRIMARYTHUMBSTICK" )[0] ) Cvar_Set( "vr_button_map_PRIMARYTHUMBSTICK", "+button6" );
+	if ( !Cvar_VariableString( "vr_button_map_PRIMARYTHUMBSTICK" )[0] ) Cvar_Set( "vr_button_map_PRIMARYTHUMBSTICK", "vr_zoom" );
 	if ( !strcmp( Cvar_VariableString( "vr_button_map_SECONDARYTHUMBSTICK" ), "+scores" ) ) Cvar_Set( "vr_button_map_SECONDARYTHUMBSTICK", "+button8" );
 	// reload on the right grip (ioq3quest's weapon wheel there does nothing in UrT); Y, which had
 	// reload, becomes free. Only migrates configs that still have the old grip binding.
@@ -379,9 +382,17 @@ void VR_InitCvars( void )
 		Cvar_Set( "vr_button_map_PRIMARYGRIP", "+button5" );
 		if ( !strcmp( Cvar_VariableString( "vr_button_map_Y" ), "+button5" ) ) Cvar_Set( "vr_button_map_Y", "+scores" );
 	}
-	// Y = scoreboard (it was briefly left empty)
+	// Layout 2: left grip = grab the front grip (two-handed aiming), right stick click = scope
+	// zoom, Y = bandage (was: left grip zoom / right stick click bandage / Y scoreboard)
+	if ( Cvar_VariableIntegerValue( "vr_urtLayout" ) < 2 ) {
+		if ( !strcmp( Cvar_VariableString( "vr_button_map_SECONDARYGRIP" ), "vr_zoom" ) ) Cvar_Set( "vr_button_map_SECONDARYGRIP", "+weapon_stabilise" );
+		if ( !strcmp( Cvar_VariableString( "vr_button_map_PRIMARYTHUMBSTICK" ), "+button6" ) ) Cvar_Set( "vr_button_map_PRIMARYTHUMBSTICK", "vr_zoom" );
+		if ( !strcmp( Cvar_VariableString( "vr_button_map_Y" ), "+scores" ) ) Cvar_Set( "vr_button_map_Y", "+button6" );
+		Cvar_Set( "vr_urtLayout", "2" );
+	}
+	// Y = bandage (it was briefly left empty)
 	if ( !Cvar_VariableIntegerValue( "vr_switchThumbsticks" ) && !Cvar_VariableString( "vr_button_map_Y" )[0] ) {
-		Cvar_Set( "vr_button_map_Y", "+scores" );
+		Cvar_Set( "vr_button_map_Y", "+button6" );
 	}
 	// B = jump, A = crouch (swapped from ioq3quest; saved configs with the old layout migrate)
 	if ( !Cvar_VariableIntegerValue( "vr_switchThumbsticks" ) &&

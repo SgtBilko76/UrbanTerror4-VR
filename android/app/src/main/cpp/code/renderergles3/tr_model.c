@@ -26,6 +26,7 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 #define	LL(x) x=LittleLong(x)
 
 static qboolean R_LoadMD3(model_t *mod, int lod, void *buffer, int bufferSize, const char *modName);
+extern cvar_t *r_vrHandsOnly;
 static qboolean R_LoadMDR(model_t *mod, void *buffer, int filesize, const char *name );
 
 /*
@@ -586,6 +587,49 @@ static qboolean R_LoadMD3(model_t * mod, int lod, void *buffer, int bufferSize, 
 			fNormal[2] = tr.sinTable[(lng+(FUNCTABLE_SIZE/4))&FUNCTABLE_MASK];
 
 			R_VaoPackNormal(v->normal, fNormal);
+		}
+
+		// VR (Urban Terror): show only the hands of the first-person arms. Hand and forearm are one
+		// surface; the hand is the dense cluster at the fingertip end (max x, the arms point away
+		// from the camera), the forearm a few sparse rings. Measured from the fingertips, the wrist is
+		// the first distance where the next 3 units hold < 6% of the vertices. Keep the triangles
+		// inside that radius (frame 0 decides; the mesh topology is the same in every frame).
+		if ( r_vrHandsOnly && r_vrHandsOnly->integer && strstr( modName, "_hold" ) &&
+				!Q_stricmpn( surf->name, "h_hand", 6 ) && surf->numVerts > 8 ) {
+			int nv = surf->numVerts, nTip = 0, b, kept = 0;
+			float maxX = -1e9f, cut = 0, *dist;
+			vec3_t tip = { 0, 0, 0 };
+			int bins[128];
+			for ( j = 0; j < nv; j++ ) if ( surf->verts[j].xyz[0] > maxX ) maxX = surf->verts[j].xyz[0];
+			for ( j = 0; j < nv; j++ ) {
+				if ( surf->verts[j].xyz[0] > maxX - 5.0f ) { VectorAdd( tip, surf->verts[j].xyz, tip ); nTip++; }
+			}
+			VectorScale( tip, 1.0f / nTip, tip );
+			dist = ri.Malloc( sizeof( float ) * nv );
+			memset( bins, 0, sizeof( bins ) );
+			for ( j = 0; j < nv; j++ ) {
+				dist[j] = Distance( surf->verts[j].xyz, tip );
+				b = (int)dist[j];
+				bins[b < 127 ? b : 127]++;
+			}
+			for ( b = 2; b < 125; b++ ) {
+				// the last dense unit is the glove cuff (jagged in VR): cut 1 unit closer to the hand
+				if ( ( bins[b] + bins[b + 1] + bins[b + 2] ) * 100 < nv * 6 ) { cut = b; break; }
+			}
+			if ( cut > 0 ) {
+				glIndex_t *src = surf->indexes, *dst = surf->indexes;
+				for ( j = 0; j < surf->numIndexes; j += 3, src += 3 ) {
+					if ( dist[src[0]] < cut && dist[src[1]] < cut && dist[src[2]] < cut ) {
+						dst[0] = src[0]; dst[1] = src[1]; dst[2] = src[2];
+						dst += 3;
+						kept += 3;
+					}
+				}
+				ri.Printf( PRINT_DEVELOPER, "VR hands: %s %s wrist at %.0f, %d of %d triangles kept\n",
+					modName, surf->name, cut, kept / 3, surf->numIndexes / 3 );
+				if ( kept > 0 ) surf->numIndexes = kept;
+			}
+			ri.Free( dist );
 		}
 
 		// swap all the ST

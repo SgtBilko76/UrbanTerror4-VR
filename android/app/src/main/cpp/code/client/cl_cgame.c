@@ -738,6 +738,45 @@ static void CL_VRStageToWorld( const vec3_t stage, float headYaw, vec3_t out ) {
 	out[2] = u * scale;
 }
 
+// Scope zoom. Urban Terror zooms by narrowing its refdef FOV (ut_zoomin/ut_zoomout/ut_zoomreset).
+// The VR eye projection ignores the game's FOV, so the same narrowing is applied to the eye
+// projection instead (vr_renderer.c, VR_ZoomAngle): zoom = tan(cg_fov/2) / tan(fov_x/2).
+float vr_urtZoom = 1.0f;
+int vr_urtZoomTime;
+static float vrZoomPressFov;	// fov_x when vr_zoom was pressed, 0 = no check pending
+static int vrZoomPressTime;
+static float vrZoomLastFov = 90.0f;
+
+void CL_VRZoom_f( void ) {
+	// one zoom step; if the weapon is already at its strongest zoom (the FOV doesn't get
+	// narrower), go back to no zoom
+	vrZoomPressFov = vrZoomLastFov;
+	vrZoomPressTime = cls.realtime;
+	Cbuf_AddText( "ut_zoomin\n" );
+}
+
+static void CL_VRUpdateZoom( float fovX ) {
+	float base = Cvar_VariableValue( "cg_fov" );
+	if ( base < 10.0f || base > 170.0f ) base = 90.0f;
+	if ( vrZoomPressFov > 0.0f ) {
+		if ( fovX < vrZoomPressFov - 0.5f ) {
+			vrZoomPressFov = 0.0f;		// zoomed further in
+		} else if ( cls.realtime - vrZoomPressTime > 400 ) {
+			if ( fovX < base - 0.5f ) {
+				Cbuf_AddText( "ut_zoomreset\n" );
+			}
+			vrZoomPressFov = 0.0f;
+		}
+	}
+	vrZoomLastFov = fovX;
+	if ( fovX > 1.0f && fovX < base - 0.5f && Cvar_VariableIntegerValue( "vr_urtZoom" ) ) {
+		vr_urtZoom = tan( DEG2RAD( base ) * 0.5 ) / tan( DEG2RAD( fovX ) * 0.5 );
+	} else {
+		vr_urtZoom = 1.0f;
+	}
+	vr_urtZoomTime = cls.realtime;
+}
+
 static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 	vec3_t head, aim, hand, off, fwd, end, dir, grip, gAxis[3], hAxis[3], zero = { 0, 0, 0 };
 	vec3_t aimEye, offOrg, offAng, oAxis[3];
@@ -746,6 +785,7 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 	trace_t tr;
 	int i;
 
+	CL_VRUpdateZoom( in->fov_x );
 	if ( !CL_VRAimEnabled() || !CL_VRFirstPersonPlayer() ) {
 		// not aiming with the controller: put the held entities back unchanged
 		for ( i = 0; i < vrNumFpEnts; i++ ) {
@@ -822,6 +862,40 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 	}
 	gunScale = Cvar_VariableValue( "vr_urtGunScale" );
 	if ( gunScale <= 0.05f ) gunScale = 1.0f;
+	// Urban Terror squashes its whole view weapon (arms included) to ~61% along the view direction,
+	// which is invisible on a flat screen but makes the gun short and flat once it turns with the
+	// controller. Undo it: stretch axes and part offsets along the view forward (gAxis[0]) by 1/s,
+	// about the arms model's origin (the base the parts are placed from).
+	if ( Cvar_VariableIntegerValue( "vr_urtUnsquash" ) && vrNumFpEnts > 0 ) {
+		float s = 1.0f;
+		vec3_t base;
+		int k;
+		VectorCopy( vrFpEnts[0].origin, base );
+		for ( i = 0; i < vrNumFpEnts; i++ ) {
+			refEntity_t *e = &vrFpEnts[i];
+			if ( e->reType != RT_MODEL ) continue;
+			if ( CL_VRIsHoldModel( e->hModel ) ) VectorCopy( e->origin, base );
+			for ( k = 0; k < 3; k++ ) {
+				float l = VectorLength( e->axis[k] );
+				if ( l > 0.2f && l < s ) s = l;
+			}
+		}
+		if ( s < 0.98f ) {
+			float st = 1.0f / s - 1.0f;
+			for ( i = 0; i < vrNumFpEnts; i++ ) {
+				refEntity_t *e = &vrFpEnts[i];
+				vec3_t d;
+				if ( e->reType != RT_MODEL ) continue;
+				for ( k = 0; k < 3; k++ ) {
+					VectorMA( e->axis[k], st * DotProduct( e->axis[k], gAxis[0] ), gAxis[0], e->axis[k] );
+				}
+				VectorSubtract( e->origin, base, d );
+				VectorMA( e->origin, st * DotProduct( d, gAxis[0] ), gAxis[0], e->origin );
+				VectorSubtract( e->oldorigin, base, d );
+				VectorMA( e->oldorigin, st * DotProduct( d, gAxis[0] ), gAxis[0], e->oldorigin );
+			}
+		}
+	}
 	grip[0] = Cvar_VariableValue( "vr_urtGunForward" );
 	grip[1] = Cvar_VariableValue( "vr_urtGunLeft" );
 	grip[2] = Cvar_VariableValue( "vr_urtGunUp" );
@@ -858,8 +932,14 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 		CL_VRTransformPoint( e->lightingOrigin, in->vieworg, gAxis, grip, hand, hAxis, o );
 		VectorCopy( o, e->lightingOrigin );
 		if ( holdModel ) {
-			e->vrHandSide = 2;	// everything but the left hand
-			CL_VRAddLeftArm( e, offOrg, oAxis );
+			if ( vr.weapon_stabilised ) {
+				// left grip held near the gun: the left hand holds the front grip, in the arms
+				// model's own pose (two-handed aiming, vr_input.c)
+				e->vrHandSide = 0;
+			} else {
+				e->vrHandSide = 2;	// everything but the left hand
+				CL_VRAddLeftArm( e, offOrg, oAxis );
+			}
 		}
 		re.AddRefEntityToScene( e );
 	}

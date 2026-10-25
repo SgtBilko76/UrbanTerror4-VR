@@ -1322,7 +1322,10 @@ void R_Register( void )
 	r_stereoSeparation = ri.Cvar_Get( "r_stereoSeparation", "64", CVAR_ARCHIVE );
 	{
 		extern cvar_t *r_vrWorldModelIdentity;
+		extern cvar_t *r_vrHandsOnly;
 		r_vrWorldModelIdentity = ri.Cvar_Get( "r_vrWorldModelIdentity", "1", 0 );
+		// Urban Terror: draw only the hands of the first-person arms (applied when models load)
+		r_vrHandsOnly = ri.Cvar_Get( "r_vrHandsOnly", "1", CVAR_ARCHIVE | CVAR_LATCH );
 	}
 	r_useFlush = ri.Cvar_Get( "r_useFlush", "1", CVAR_ARCHIVE );
 	r_ignoreGLErrors = ri.Cvar_Get( "r_ignoreGLErrors", "1", CVAR_ARCHIVE );

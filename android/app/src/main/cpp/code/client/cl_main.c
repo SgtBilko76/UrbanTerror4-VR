@@ -3698,6 +3698,10 @@ void CL_Init( void ) {
 	Cmd_AddCommand ("localservers", CL_LocalServers_f);
 	Cmd_AddCommand ("globalservers", CL_GlobalServers_f);
 	Cmd_AddCommand ("rcon", CL_Rcon_f);
+	{
+		extern void CL_VRZoom_f( void );
+		Cmd_AddCommand( "vr_zoom", CL_VRZoom_f );	// VR: one scope zoom step, wraps to no zoom
+	}
 	Cmd_SetCommandCompletionFunc( "rcon", CL_CompleteRcon );
 	Cmd_AddCommand ("ping", CL_Ping_f );
 	Cmd_AddCommand ("serverstatus", CL_ServerStatus_f );
