@@ -1126,6 +1126,29 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 			}
 		}
 		re.AddRefEntityToScene( e );
+		// Flat-screen gun bodies lack faces on the side you never see on a monitor (e.g. the AK103
+		// receiver has ~1/3 of the faces on one side). Turned in the hand you look into the gun and
+		// the magazine seems to stick out. Fill the gaps with a second copy of the body mirrored
+		// across its own side midplane and pulled 3% inward: behind existing walls it is hidden,
+		// where a wall is missing the mirrored opposite wall closes it.
+		if ( !holdModel && e->reType == RT_MODEL && Cvar_VariableIntegerValue( "vr_urtMirrorBody" ) &&
+				e->hModel > 0 && e->hModel < MAX_VR_MODEL_NAMES && strstr( vrModelNames[e->hModel], "_view_main" ) ) {
+			refEntity_t m = *e;
+			vec3_t mins, maxs;
+			int k, side = 0;
+			float c, kk = 0.97f;
+			re.ModelBounds( e->hModel, mins, maxs );
+			for ( k = 1; k < 3; k++ ) {
+				if ( maxs[k] - mins[k] < maxs[side] - mins[side] ) side = k;	// thinnest axis = side
+			}
+			c = 0.5f * ( mins[side] + maxs[side] );
+			// model point v -> mirrored v[side]' = c - kk * ( v[side] - c )
+			VectorMA( e->origin, ( 1.0f + kk ) * c, e->axis[side], m.origin );
+			VectorMA( e->oldorigin, ( 1.0f + kk ) * c, e->axis[side], m.oldorigin );
+			VectorScale( e->axis[side], -kk, m.axis[side] );
+			m.nonNormalizedAxes = qtrue;
+			re.AddRefEntityToScene( &m );
+		}
 	}
 	vrNumFpEnts = 0;
 

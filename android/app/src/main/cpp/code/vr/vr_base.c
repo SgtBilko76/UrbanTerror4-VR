@@ -210,6 +210,7 @@ void VR_InitCvars( void )
 	Cvar_Get ("vr_urtScopeReticleDist", "50", CVAR_ARCHIVE); // scoped: reticle panel this many times further out
 	Cvar_Get ("vr_urtLayout", "0", CVAR_ARCHIVE); // button layout version (migrations)
 	Cvar_Get ("vr_urtUnsquash", "1", CVAR_ARCHIVE); // undo UrT's depth squash of the view weapon
+	Cvar_Get ("vr_urtMirrorBody", "1", CVAR_ARCHIVE); // mirrored copy of the gun body fills missing sides
 	Cvar_Get ("vr_urtAlignBarrel", "1", CVAR_ARCHIVE); // turn the gun so its barrel (tag_flash) follows the aim
 	Cvar_Get ("vr_urtGripFromHand", "1", CVAR_ARCHIVE); // each weapon's right palm sits on the controller
 	Cvar_Get ("vr_urtHandForward", "0", CVAR_ARCHIVE); // palm -> controller offset (weapon model units)

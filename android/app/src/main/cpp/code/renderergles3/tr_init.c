@@ -1323,6 +1323,8 @@ void R_Register( void )
 	{
 		extern cvar_t *r_vrWorldModelIdentity;
 		extern cvar_t *r_vrHandsOnly;
+		extern cvar_t *r_vrWeaponTwoSided;
+		r_vrWeaponTwoSided = ri.Cvar_Get( "r_vrWeaponTwoSided", "1", CVAR_ARCHIVE ); // first-person models drawn two-sided
 		r_vrWorldModelIdentity = ri.Cvar_Get( "r_vrWorldModelIdentity", "1", 0 );
 		// Urban Terror: draw only the hands of the first-person arms (applied when models load)
 		r_vrHandsOnly = ri.Cvar_Get( "r_vrHandsOnly", "1", CVAR_ARCHIVE | CVAR_LATCH );

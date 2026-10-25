@@ -21,7 +21,8 @@ Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
 */
 // tr_shade.c
 
-#include "tr_local.h" 
+#include "tr_local.h"
+extern cvar_t *r_vrWeaponTwoSided;
 
 /*
 
@@ -1506,7 +1507,13 @@ void RB_StageIteratorGeneric( void )
 	//
 	// set face culling appropriately
 	//
-	if (input->shader->cullType == CT_TWO_SIDED)
+	if (input->shader->cullType == CT_TWO_SIDED ||
+		// VR: first-person weapon and hand models are built for one flat-screen viewing angle and
+		// lack the faces you never see there (e.g. the right side of many receivers). Turned in the
+		// hand those sides looked transparent; drawing them two-sided shows the inner faces instead.
+		( r_vrWeaponTwoSided->integer && backEnd.currentEntity &&
+		  backEnd.currentEntity != &tr.worldEntity &&
+		  ( backEnd.currentEntity->e.renderfx & RF_FIRST_PERSON ) ))
 	{
 		GL_Cull( CT_TWO_SIDED );
 	}
