@@ -226,6 +226,7 @@ void VR_InitCvars( void )
 	Cvar_Get ("vr_urtLeftArmYaw", "0", CVAR_ARCHIVE);
 	Cvar_Get ("vr_urtLeftArmRoll", "0", CVAR_ARCHIVE);
 	Cvar_Get ("vr_urtGunScale", "0.4", CVAR_ARCHIVE); // size of the gun in the hand (UrT view model is flat-screen sized)
+	Cvar_Get ("vr_urtPistolScale", "0.3", CVAR_ARCHIVE); // size of pistols in the hand
 	Cvar_Get ("vr_urtArmsCutoff", "16", CVAR_ARCHIVE); // first-person models closer to the eye than this are the arms
 	Cvar_Get ("vr_urtRealHeight", "1", CVAR_ARCHIVE); // camera height = real head height (UrT)
 	Cvar_Get ("vr_urtEyeHeight", "62", CVAR_ARCHIVE); // UrT standing eye height above the floor (units)

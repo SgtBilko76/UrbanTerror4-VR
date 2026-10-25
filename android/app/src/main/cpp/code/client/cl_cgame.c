@@ -981,6 +981,19 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 	}
 	gunScale = Cvar_VariableValue( "vr_urtGunScale" );
 	if ( gunScale <= 0.05f ) gunScale = 1.0f;
+	// pistols are sized separately: at the rifles' scale they came out far too big
+	for ( i = 0; i < vrNumFpEnts; i++ ) {
+		const refEntity_t *e = &vrFpEnts[i];
+		if ( e->reType == RT_MODEL && CL_VRIsHoldModel( e->hModel ) ) {
+			const char *n = vrModelNames[e->hModel];
+			if ( strstr( n, "/beretta/" ) || strstr( n, "/deserteagle/" ) || strstr( n, "/glock/" ) ||
+					strstr( n, "/colt1911/" ) || strstr( n, "/44magnum/" ) ) {
+				float ps = Cvar_VariableValue( "vr_urtPistolScale" );
+				if ( ps > 0.05f ) gunScale = ps;
+			}
+			break;
+		}
+	}
 	// Urban Terror squashes its whole view weapon (arms included) to ~61% along the view direction,
 	// which is invisible on a flat screen but makes the gun short and flat once it turns with the
 	// controller. Undo it: stretch axes and part offsets along the view forward (gAxis[0]) by 1/s,
