@@ -958,9 +958,15 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 	// the view and UrT's scope overlay follow the hand. Roll stays level.
 	cl_vrScopeView = vr_urtZoom > 1.01f && Cvar_VariableIntegerValue( "vr_urtScopeFollowsHand" );
 	if ( cl_vrScopeView ) {
-		vec3_t sa;
-		sa[PITCH] = aimEye[PITCH];
-		sa[YAW] = aimEye[YAW];
+		// from the camera itself (it can sit a little above/below the game's eye) to the point
+		// the shot hits, so the view centre is exactly on it
+		vec3_t sa, sd;
+		VectorSubtract( tr.endpos, rd->vieworg, sd );
+		if ( VectorLength( sd ) > 64.0f ) {
+			vectoangles( sd, sa );
+		} else {
+			VectorCopy( aimEye, sa );
+		}
 		sa[ROLL] = 0;
 		AnglesToAxis( sa, rd->viewaxis );
 	}
@@ -1217,13 +1223,25 @@ static void CL_VRAddHudSprite( const refdef_t *rd ) {
 		// the reticle centre is where the shot goes
 		vectoangles( rd->viewaxis[0], angles );
 		angles[ROLL] = 0;
+		// reticle at "infinity", like a real scope: at the HUD's ~0.5 m each eye sees it a few
+		// degrees off the view centre (stereo parallax), so shots landed beside it. Same angular
+		// size, far away.
+		{
+			float far = Cvar_VariableValue( "vr_urtScopeReticleDist" );
+			if ( far > 1.0f ) {
+				dist *= far;
+				radius *= far;
+			}
+		}
 		yawX = cos( DEG2RAD( vr.hmdorientation[YAW] ) );
 		yawY = sin( DEG2RAD( vr.hmdorientation[YAW] ) );
 		prevPitch = vr.hmdorientation[PITCH];
 	}
 	AngleVectors( angles, forward, right, up );
 	VectorMA( rd->vieworg, dist, forward, endpos );
-	VectorMA( endpos, Cvar_VariableValue( "vr_hudYOffset" ) / 20, up, endpos );
+	if ( !cl_vrScopeView ) {	// scoped: the reticle centre must stay on the view centre
+		VectorMA( endpos, Cvar_VariableValue( "vr_hudYOffset" ) / 20, up, endpos );
+	}
 
 	Com_Memset( &ent, 0, sizeof( ent ) );
 	ent.reType = RT_SPRITE;
