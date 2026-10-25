@@ -551,9 +551,32 @@ typedef struct {
 	int		numFrames;
 	vec3_t	*pivot;		// per frame, model space; NULL if the model has no left hand
 	vec3_t	*elbow;		// per frame: back end of the left forearm
+	vec3_t	*rpivot;	// per frame: right hand (front-most 7 units of h_handright*), NULL if none
+	int		rFrames;
 } vrHoldModel_t;
 static vrHoldModel_t vrHoldModels[MAX_VR_HOLD_MODELS];
 static int vrNumHoldModels;
+
+// mean of the vertices within 7 units of the front-most (max x) point: the hand of an arm surface
+static void CL_VRHandCluster( const short *xyz, int numVerts, vec3_t out ) {
+	float maxX = -99999.0f;
+	vec3_t sum = { 0, 0, 0 };
+	int v, n = 0;
+	for ( v = 0; v < numVerts; v++ ) {
+		float x = LittleShort( xyz[v * 4] ) / 64.0f;
+		if ( x > maxX ) maxX = x;
+	}
+	for ( v = 0; v < numVerts; v++ ) {
+		float x = LittleShort( xyz[v * 4] ) / 64.0f;
+		if ( x > maxX - 7.0f ) {
+			sum[0] += x;
+			sum[1] += LittleShort( xyz[v * 4 + 1] ) / 64.0f;
+			sum[2] += LittleShort( xyz[v * 4 + 2] ) / 64.0f;
+			n++;
+		}
+	}
+	VectorScale( sum, n ? 1.0f / n : 0.0f, out );
+}
 
 static const vrHoldModel_t *CL_VRHoldModel( const char *name ) {
 	vrHoldModel_t *hm;
@@ -583,7 +606,16 @@ static const vrHoldModel_t *CL_VRHoldModel( const char *name ) {
 			int ofsEnd = LittleLong( *(int *)( sf + 104 ) );
 			Com_Memcpy( sname, sf + 4, 64 ); sname[64] = 0;
 			Q_strlwr( sname );
-			if ( !strcmp( sname, "h_handleft" ) && numVerts > 0 && sFrames > 0 &&
+			if ( !strncmp( sname, "h_handright", 11 ) && !hm->rpivot && numVerts > 0 && sFrames > 0 &&
+					ofs + ofsXyz + sFrames * numVerts * 8 <= len ) {
+				int f;
+				hm->rFrames = sFrames;
+				hm->rpivot = Z_Malloc( sFrames * sizeof( vec3_t ) );
+				for ( f = 0; f < sFrames; f++ ) {
+					CL_VRHandCluster( (const short *)( sf + ofsXyz + f * numVerts * 8 ), numVerts, hm->rpivot[f] );
+				}
+			}
+			if ( !strncmp( sname, "h_handleft", 10 ) && !hm->pivot && numVerts > 0 && sFrames > 0 &&
 					ofs + ofsXyz + sFrames * numVerts * 8 <= len ) {
 				int f, v;
 				hm->numFrames = sFrames;
@@ -629,7 +661,6 @@ static const vrHoldModel_t *CL_VRHoldModel( const char *name ) {
 						VectorScale( esum, 1.0f / en, hm->elbow[f] );
 					}
 				}
-				break;
 			}
 			if ( ofsEnd <= 0 ) break;
 			ofs += ofsEnd;
@@ -637,7 +668,8 @@ static const vrHoldModel_t *CL_VRHoldModel( const char *name ) {
 		(void)numFrames;
 	}
 	if ( len > 0 ) FS_FreeFile( buf.v );
-	Com_DPrintf( "VR arms: %s left hand pivot %s\n", name, hm->pivot ? "found" : "missing" );
+	Com_DPrintf( "VR arms: %s left hand %s, right hand %s\n", name, hm->pivot ? "found" : "missing",
+		hm->rpivot ? "found" : "missing" );
 	return hm;
 }
 
@@ -777,10 +809,69 @@ static void CL_VRUpdateZoom( float fovX ) {
 	vr_urtZoomTime = cls.realtime;
 }
 
+/*
+Barrel alignment. A flat-screen view model sits low-right and is angled so the barrel points at
+the screen-centre crosshair; in the hand that angle makes the gun shoot off its barrel. The
+weapon's muzzle tag (tag_flash on the arms model) gives the real barrel direction: the gun is
+turned about the grip so that direction is the hand's aim direction. Measured only while the
+weapon is idle (not raising, reloading or firing), so the game's animations still show.
+*/
+static qhandle_t vrGunModel;
+static int vrGunModelTime, vrGunBusyTime;
+static qboolean vrGunDirValid;
+static vec3_t vrGunDir;			// smoothed barrel direction, eye-frame coordinates
+static qboolean vrMuzzleValid;
+static vec3_t vrMuzzleLocal;	// muzzle relative to the hand, hand-frame coordinates
+
+// rotation that turns unit vector d onto +x, applied to v
+static void CL_VRRotateToX( const vec3_t d, const vec3_t v, vec3_t out ) {
+	vec3_t x = { 1, 0, 0 }, k, kv;
+	float c = DotProduct( d, x ), sn, kl;
+	CrossProduct( d, x, k );
+	kl = VectorNormalize( k );
+	if ( kl < 1e-5f ) { VectorCopy( v, out ); return; }
+	sn = kl;
+	CrossProduct( k, v, kv );
+	VectorScale( v, c, out );
+	VectorMA( out, sn, kv, out );
+	VectorMA( out, DotProduct( k, v ) * ( 1.0f - c ), k, out );
+}
+
+static void CL_VRMeasureBarrel( const refEntity_t *hold, vec3_t gAxis[3] ) {
+	orientation_t tag;
+	vec3_t dir, dl;
+	int i;
+	if ( hold->hModel != vrGunModel ) {
+		vrGunModel = hold->hModel;
+		vrGunModelTime = cls.realtime;
+		vrGunDirValid = qfalse;
+	}
+	for ( i = 0; i < 4; i++ ) {
+		int b = cl.cmds[( cl.cmdNumber - i ) & CMD_MASK].buttons;
+		if ( b & ( BUTTON_ATTACK | ( 1 << 5 ) ) ) vrGunBusyTime = cls.realtime;	// fire / reload
+	}
+	if ( cls.realtime - vrGunModelTime < 1500 ) return;	// raise animation
+	if ( vrGunDirValid && cls.realtime - vrGunBusyTime < 2500 ) return;
+	if ( !re.LerpTag( &tag, hold->hModel, hold->oldframe, hold->frame, 1.0f - hold->backlerp, "tag_flash" ) ) return;
+	VectorClear( dir );
+	for ( i = 0; i < 3; i++ ) VectorMA( dir, tag.axis[0][i], hold->axis[i], dir );
+	if ( VectorNormalize( dir ) < 1e-4f ) return;
+	for ( i = 0; i < 3; i++ ) dl[i] = DotProduct( dir, gAxis[i] );
+	if ( dl[0] < cos( DEG2RAD( 25.0f ) ) ) return;	// not pointing roughly forward: some animation
+	if ( !vrGunDirValid ) {
+		VectorCopy( dl, vrGunDir );
+		vrGunDirValid = qtrue;
+	} else {
+		VectorScale( vrGunDir, 0.9f, vrGunDir );
+		VectorMA( vrGunDir, 0.1f, dl, vrGunDir );
+		VectorNormalize( vrGunDir );
+	}
+}
+
 static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 	vec3_t head, aim, hand, off, fwd, end, dir, grip, gAxis[3], hAxis[3], zero = { 0, 0, 0 };
-	vec3_t aimEye, offOrg, offAng, oAxis[3];
-	float gunScale;
+	vec3_t aimEye, offOrg, offAng, oAxis[3], gunAxis[3];
+	float gunScale, unsquashS = 1.0f, unsquashBaseF = 0.0f;
 	float headYaw;
 	trace_t tr;
 	int i;
@@ -842,8 +933,19 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 
 	// what the hand points at; the game shoots from the eye, so aim the eye at that point
 	VectorCopy( hAxis[0], fwd );
-	VectorMA( hand, 8192, fwd, end );
-	CM_BoxTrace( &tr, hand, end, zero, zero, 0, CONTENTS_SOLID | CONTENTS_BODY, qfalse );
+	{	// from the muzzle, so the crosshair sits on the barrel line (unless the muzzle is in a wall)
+		vec3_t start;
+		VectorCopy( hand, start );
+		if ( vrMuzzleValid && Cvar_VariableIntegerValue( "vr_urtAlignBarrel" ) ) {
+			vec3_t m;
+			VectorCopy( hand, m );
+			for ( i = 0; i < 3; i++ ) VectorMA( m, vrMuzzleLocal[i], hAxis[i], m );
+			CM_BoxTrace( &tr, hand, m, zero, zero, 0, CONTENTS_SOLID, qfalse );
+			if ( tr.fraction >= 1.0f && !tr.startsolid ) VectorCopy( m, start );
+		}
+		VectorMA( start, 8192, fwd, end );
+		CM_BoxTrace( &tr, start, end, zero, zero, 0, CONTENTS_SOLID | CONTENTS_BODY, qfalse );
+	}
 	VectorSubtract( tr.endpos, in->vieworg, dir );
 	if ( VectorLength( dir ) > 64.0f ) {
 		vectoangles( dir, aimEye );
@@ -882,6 +984,10 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 		}
 		if ( s < 0.98f ) {
 			float st = 1.0f / s - 1.0f;
+			vec3_t bd;
+			VectorSubtract( base, in->vieworg, bd );
+			unsquashS = s;
+			unsquashBaseF = DotProduct( bd, gAxis[0] );
 			for ( i = 0; i < vrNumFpEnts; i++ ) {
 				refEntity_t *e = &vrFpEnts[i];
 				vec3_t d;
@@ -899,6 +1005,56 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 	grip[0] = Cvar_VariableValue( "vr_urtGunForward" );
 	grip[1] = Cvar_VariableValue( "vr_urtGunLeft" );
 	grip[2] = Cvar_VariableValue( "vr_urtGunUp" );
+	// the grip point was tuned on the squashed model: stretch it with the gun, so the handle
+	// stays in the hand
+	if ( unsquashS < 0.98f ) {
+		grip[0] = unsquashBaseF + ( grip[0] - unsquashBaseF ) / unsquashS;
+	}
+	// Better: each weapon's own right hand (palm) goes onto the controller. One fixed grip point
+	// for all weapons put the pistols' handle ~0.5 m in front of the hand.
+	if ( Cvar_VariableIntegerValue( "vr_urtGripFromHand" ) ) {
+		for ( i = 0; i < vrNumFpEnts; i++ ) {
+			const refEntity_t *e = &vrFpEnts[i];
+			const vrHoldModel_t *hm;
+			if ( e->reType != RT_MODEL || !CL_VRIsHoldModel( e->hModel ) ) continue;
+			hm = CL_VRHoldModel( vrModelNames[e->hModel] );
+			if ( hm && hm->rpivot ) {
+				int f0 = e->frame, f1 = e->oldframe, k;
+				vec3_t p, w, d;
+				if ( f0 < 0 || f0 >= hm->rFrames ) f0 = 0;
+				if ( f1 < 0 || f1 >= hm->rFrames ) f1 = f0;
+				// palm of the idle pose: don't let reload/raise animations drag the gun about
+				for ( k = 0; k < 3; k++ ) p[k] = hm->rpivot[f0][k] * ( 1.0f - e->backlerp ) + hm->rpivot[f1][k] * e->backlerp;
+				VectorCopy( e->origin, w );
+				for ( k = 0; k < 3; k++ ) VectorMA( w, p[k], e->axis[k], w );
+				VectorSubtract( w, in->vieworg, d );
+				grip[0] = DotProduct( d, gAxis[0] ) + Cvar_VariableValue( "vr_urtHandForward" );
+				grip[1] = DotProduct( d, gAxis[1] ) + Cvar_VariableValue( "vr_urtHandLeft" );
+				grip[2] = DotProduct( d, gAxis[2] ) + Cvar_VariableValue( "vr_urtHandUp" );
+			}
+			break;
+		}
+	}
+	// gun basis: the hand frame, turned so the barrel lies along the aim direction
+	for ( i = 0; i < 3; i++ ) VectorCopy( hAxis[i], gunAxis[i] );
+	if ( Cvar_VariableIntegerValue( "vr_urtAlignBarrel" ) ) {
+		for ( i = 0; i < vrNumFpEnts; i++ ) {
+			if ( vrFpEnts[i].reType == RT_MODEL && CL_VRIsHoldModel( vrFpEnts[i].hModel ) ) {
+				CL_VRMeasureBarrel( &vrFpEnts[i], gAxis );
+				break;
+			}
+		}
+		if ( vrGunDirValid && i < vrNumFpEnts ) {
+			int j, k;
+			for ( j = 0; j < 3; j++ ) {
+				vec3_t ej = { 0, 0, 0 }, r;
+				ej[j] = 1.0f;
+				CL_VRRotateToX( vrGunDir, ej, r );
+				VectorClear( gunAxis[j] );
+				for ( k = 0; k < 3; k++ ) VectorMA( gunAxis[j], r[k], hAxis[k], gunAxis[j] );
+			}
+		}
+	}
 	for ( i = 0; i < vrNumFpEnts; i++ ) {
 		refEntity_t *e = &vrFpEnts[i];
 		vec3_t a0, a1, a2, o;
@@ -912,9 +1068,9 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 				!Cvar_VariableIntegerValue( "vr_urtArms" ) ) {
 			continue;
 		}
-		CL_VRTransformAxis( e->axis[0], gAxis, hAxis, a0 );
-		CL_VRTransformAxis( e->axis[1], gAxis, hAxis, a1 );
-		CL_VRTransformAxis( e->axis[2], gAxis, hAxis, a2 );
+		CL_VRTransformAxis( e->axis[0], gAxis, gunAxis, a0 );
+		CL_VRTransformAxis( e->axis[1], gAxis, gunAxis, a1 );
+		CL_VRTransformAxis( e->axis[2], gAxis, gunAxis, a2 );
 		// UrT's view model is sized for a flat screen (about 1 m long in VR): shrink it around
 		// the grip, as QuakeQuest does with its weaponScale
 		VectorScale( a0, gunScale, e->axis[0] );
@@ -923,15 +1079,26 @@ static void CL_VRApplyView( const legacyRefdef_t *in, refdef_t *rd ) {
 		if ( gunScale != 1.0f ) {
 			e->nonNormalizedAxes = qtrue;
 		}
-		CL_VRTransformPoint( e->origin, in->vieworg, gAxis, grip, hand, hAxis, o );
+		CL_VRTransformPoint( e->origin, in->vieworg, gAxis, grip, hand, gunAxis, o );
 		VectorSubtract( o, hand, o );
 		VectorMA( hand, gunScale, o, e->origin );
-		CL_VRTransformPoint( e->oldorigin, in->vieworg, gAxis, grip, hand, hAxis, o );
+		CL_VRTransformPoint( e->oldorigin, in->vieworg, gAxis, grip, hand, gunAxis, o );
 		VectorSubtract( o, hand, o );
 		VectorMA( hand, gunScale, o, e->oldorigin );
-		CL_VRTransformPoint( e->lightingOrigin, in->vieworg, gAxis, grip, hand, hAxis, o );
+		CL_VRTransformPoint( e->lightingOrigin, in->vieworg, gAxis, grip, hand, gunAxis, o );
 		VectorCopy( o, e->lightingOrigin );
 		if ( holdModel ) {
+			orientation_t mt;
+			if ( re.LerpTag( &mt, e->hModel, e->oldframe, e->frame, 1.0f - e->backlerp, "tag_flash" ) ) {
+				// muzzle in the hand frame, for next frame's aim trace
+				vec3_t m, d;
+				int k;
+				VectorCopy( e->origin, m );
+				for ( k = 0; k < 3; k++ ) VectorMA( m, mt.origin[k], e->axis[k], m );
+				VectorSubtract( m, hand, d );
+				for ( k = 0; k < 3; k++ ) vrMuzzleLocal[k] = DotProduct( d, hAxis[k] );
+				vrMuzzleValid = VectorLength( d ) < 64.0f;
+			}
 			if ( vr.weapon_stabilised ) {
 				// left grip held near the gun: the left hand holds the front grip, in the arms
 				// model's own pose (two-handed aiming, vr_input.c)

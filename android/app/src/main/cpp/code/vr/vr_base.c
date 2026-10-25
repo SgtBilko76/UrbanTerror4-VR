@@ -208,6 +208,11 @@ void VR_InitCvars( void )
 	Cvar_Get ("vr_urtZoom", "1", CVAR_ARCHIVE); // eye projection follows the scope zoom
 	Cvar_Get ("vr_urtLayout", "0", CVAR_ARCHIVE); // button layout version (migrations)
 	Cvar_Get ("vr_urtUnsquash", "1", CVAR_ARCHIVE); // undo UrT's depth squash of the view weapon
+	Cvar_Get ("vr_urtAlignBarrel", "1", CVAR_ARCHIVE); // turn the gun so its barrel (tag_flash) follows the aim
+	Cvar_Get ("vr_urtGripFromHand", "1", CVAR_ARCHIVE); // each weapon's right palm sits on the controller
+	Cvar_Get ("vr_urtHandForward", "0", CVAR_ARCHIVE); // palm -> controller offset (weapon model units)
+	Cvar_Get ("vr_urtHandLeft", "0", CVAR_ARCHIVE);
+	Cvar_Get ("vr_urtHandUp", "0", CVAR_ARCHIVE);
 	Cvar_Get ("vr_urtHudScale", "1.3", CVAR_ARCHIVE); // HUD size: bigger = HUD elements further out
 	Cvar_Get ("vr_urtCrosshairSize", "2.5", CVAR_ARCHIVE); // crosshair size in degrees
 	Cvar_Get ("vr_urtArms", "1", CVAR_ARCHIVE); // UrT arms: right hand with the gun, left arm on the left controller
