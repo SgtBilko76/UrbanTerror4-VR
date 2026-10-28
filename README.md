@@ -24,6 +24,9 @@ official server (1.4 GB, size and MD5 checked) and installs it to `/sdcard/UrTQu
 - Offline games with bots from the main menu.
 
 ## Controls
+
+![UrbanTerror4-VR controller mapping](docs/controls.webp)
+
 | Button | Action |
 |---|---|
 | Right trigger | Fire |
