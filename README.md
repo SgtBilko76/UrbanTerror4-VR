@@ -1,5 +1,7 @@
 # UrbanTerror4-VR
 
+**Download, install guide, controls and pictures: [portroyale.online/urbanterror.html](https://portroyale.online/urbanterror.html)**
+
 [Urban Terror 4.3](https://www.urbanterror.info/) as a standalone 6DoF VR game for **Meta Quest**
 (tested on Quest 3) and **PICO 4 / Neo 3** (same APK, **not tested on PICO hardware yet**). Based on
 Team Beef's [ioq3quest](https://github.com/Team-Beef-Studios/ioq3quest) (ioquake3 with OpenXR), with
